@@ -1,7 +1,8 @@
 import * as log from 'https://deno.land/std@0.79.0/log/mod.ts'
 import { assert } from 'https://deno.land/std@0.79.0/_util/assert.ts'
 import { allMovies, getRandomMovie, NoMoreMoviesError } from './api/plex.ts'
-import { MOVIE_BATCH_SIZE } from './config.ts'
+import { getJellyfinMovies } from './api/jellyfin.ts'
+import { MOVIE_BATCH_SIZE, JELLYFIN_USER_ID } from './config.ts'
 import { WebSocket } from './util/websocketServer.ts'
 
 interface Response {
@@ -72,6 +73,8 @@ class Session {
   roomCode: string
   movieList: MediaItem[] = []
   likedMovies: Map<MediaItem, User[]> = new Map()
+  source?: string
+  jellyfinUserId?: string
 
   constructor(roomCode: string) {
     this.roomCode = roomCode
@@ -152,47 +155,65 @@ class Session {
 
   async sendNextBatch() {
     try {
-      const batch = (
-        await Promise.all(
-          Array.from({
-            length: Math.min(
-              (await allMovies).length,
-              Number(MOVIE_BATCH_SIZE)
-            ),
-          }).map(async (_, index) => {
-            try {
-              log.debug(`Random movie ${index} - Fetching`)
+      const source = this.source || 'plex'
 
-              const plexMovie = await getRandomMovie()
+      let batch
+      if (source === 'jellyfin') {
+        const jellyfinMovies = await getJellyfinMovies(JELLYFIN_USER_ID)
+        batch = jellyfinMovies.map(jfMovie => ({
+          title: jfMovie.Name,
+          art: `/jellyfin/poster/${jfMovie.Id}`,
+          guid: jfMovie.Id,
+          key: jfMovie.Id,
+          summary: jfMovie.Overview,
+          year: jfMovie.ProductionYear,
+          director: (jfMovie.Director ?? [])[0],
+          rating: jfMovie.CommunityRating,
+          type: 'movie',
+        }))
+      } else {
+        batch = (
+          await Promise.all(
+            Array.from({
+              length: Math.min(
+                (await allMovies).length,
+                Number(MOVIE_BATCH_SIZE)
+              ),
+            }).map(async (_, index) => {
+              try {
+                log.debug(`Random movie ${index} - Fetching`)
 
-              log.debug(`Random movie ${index} - Done`)
+                const plexMovie = await getRandomMovie()
 
-              const movie: MediaItem = {
-                title: plexMovie.title,
-                art: `/poster/${plexMovie.thumb.replace(
-                  '/library/metadata/',
-                  ''
-                )}`,
-                guid: plexMovie.guid,
-                key: plexMovie.key,
-                summary: plexMovie.summary,
-                year: plexMovie.year,
-                director: (plexMovie.Director ?? [{ tag: undefined }])[0].tag,
-                rating: plexMovie.rating,
-                type: plexMovie.type,
+                log.debug(`Random movie ${index} - Done`)
+
+                const movie: MediaItem = {
+                  title: plexMovie.title,
+                  art: `/poster/${plexMovie.thumb.replace(
+                    '/library/metadata/',
+                    ''
+                  )}`,
+                  guid: plexMovie.guid,
+                  key: plexMovie.key,
+                  summary: plexMovie.summary,
+                  year: plexMovie.year,
+                  director: (plexMovie.Director ?? [{ tag: undefined }])[0].tag,
+                  rating: plexMovie.rating,
+                  type: plexMovie.type,
+                }
+
+                return movie
+              } catch (err) {
+                if (err instanceof NoMoreMoviesError) {
+                  throw err
+                }
+                log.error(err)
+                return []
               }
-
-              return movie
-            } catch (err) {
-              if (err instanceof NoMoreMoviesError) {
-                throw err
-              }
-              log.error(err)
-              return []
-            }
-          })
-        )
-      ).flat()
+            })
+          )
+        ).flat()
+      }
 
       this.movieList.push(...batch)
 

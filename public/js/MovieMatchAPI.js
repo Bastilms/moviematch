@@ -20,14 +20,11 @@ export class MovieMatchAPI extends EventTarget {
     })
   }
 
-  async login(user, roomCode) {
+  async login(user, roomCode, source) {
     this.socket.send(
       JSON.stringify({
         type: 'login',
-        payload: {
-          name: user,
-          roomCode,
-        },
+        payload: { user, roomCode, source }
       })
     )
 

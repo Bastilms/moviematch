@@ -118,9 +118,10 @@ export const login = async api => {
       const formData = new FormData(loginForm)
       const name = formData.get('name')
       const roomCode = formData.get('roomCode')
+      const source = formData.get('source') // NEU
       if (name && roomCode) {
         try {
-          const data = await api.login(name, roomCode)
+          const data = await api.login(name, roomCode, source)
           loginForm.removeEventListener('submit', handleSubmit)
 
           await loginSection.animate(

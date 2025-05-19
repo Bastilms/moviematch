@@ -23,6 +23,10 @@ export const DEFAULT_SECTION_TYPE_FILTER =
 export const LIBRARY_FILTER = getEnvTrimmed('LIBRARY_FILTER') ?? ''
 export const COLLECTION_FILTER = getEnvTrimmed('COLLECTION_FILTER') ?? ''
 export const ROOT_PATH = getEnvTrimmed('ROOT_PATH') ?? ''
+export const JELLYFIN_URL = getEnvTrimmed('JELLYFIN_URL')
+export const JELLYFIN_API_KEY = getEnvTrimmed('JELLYFIN_API_KEY')
+export const JELLYFIN_USER_ID = getEnvTrimmed('JELLYFIN_USER_ID')
+export const JELLYFIN_LIBRARY_FILTER = getEnvTrimmed('JELLYFIN_LIBRARY_FILTER')
 
 export const getVersion = async () => {
   const pkgText = await Deno.readTextFile(Deno.cwd() + '/package.json')

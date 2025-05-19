@@ -1,7 +1,7 @@
 import { serve } from 'https://deno.land/std@0.79.0/http/server.ts'
 import * as log from 'https://deno.land/std@0.79.0/log/mod.ts'
 import { getServerId, proxyPoster } from './api/plex.ts'
-import { PLEX_URL, PORT, LINK_TYPE } from './config.ts'
+import { PLEX_URL, PORT, LINK_TYPE, JELLYFIN_URL, JELLYFIN_API_KEY } from './config.ts'
 import { getLinkTypeForRequest } from './i18n.ts'
 import { handleLogin } from './session.ts'
 import { serveFile } from './util/staticFileServer.ts'
@@ -63,6 +63,20 @@ for await (const req of server) {
       } else {
         await proxyPoster(req, key)
       }
+    } else if (req.url.startsWith('/jellyfin/poster/')) {
+      const id = req.url.replace('/jellyfin/poster/', '')
+      const url = `${JELLYFIN_URL}/Items/${id}/Images/Primary`
+      const res = await fetch(url, {
+        headers: { 'X-Emby-Token': JELLYFIN_API_KEY }
+      })
+      const body = new Uint8Array(await res.arrayBuffer())
+      await req.respond({
+        status: res.status,
+        headers: new Headers({
+          'Content-Type': res.headers.get('content-type') || 'image/jpeg'
+        }),
+        body
+      })
     } else {
       serveFile(req, '/public')
     }
