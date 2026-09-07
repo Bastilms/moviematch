@@ -1,23 +1,107 @@
 import http from 'node:http'
 import * as log from './util/logger.js'
 import { getBackend } from './backends/index.js'
-import { LINK_TYPE, PORT } from './config.js'
+import {
+  LINK_TYPE,
+  PORT,
+  RATE_LIMIT_ENABLED,
+  RATE_LIMIT_HTTP_PER_MINUTE,
+  RATE_LIMIT_WS_PER_MINUTE,
+  RATE_LIMIT_MESSAGES_PER_MINUTE,
+  TRUST_PROXY,
+} from './config.js'
 import { getLinkTypeForRequest } from './i18n.js'
 import { handleLogin } from './session.js'
 import { serveFile } from './util/staticFileServer.js'
 import { WebSocketServer } from './util/websocketServer.js'
-import { closeDatabase, getRoomMatches, roomExists } from './db/database.js'
+import {
+  closeDatabase,
+  getRoomMatches,
+  roomExists,
+  initDatabase,
+} from './db/database.js'
 import { toCSV } from './util/csv.js'
+import { createRateLimiter, getClientIp } from './util/rateLimit.js'
+import type { RateLimiter } from './util/rateLimit.js'
 
 const backend = getBackend()
+
+// Initialize rate limiters
+const httpRateLimiter: RateLimiter | null = RATE_LIMIT_ENABLED
+  ? createRateLimiter(RATE_LIMIT_HTTP_PER_MINUTE)
+  : null
+
+const wsRateLimiter: RateLimiter | null = RATE_LIMIT_ENABLED
+  ? createRateLimiter(RATE_LIMIT_WS_PER_MINUTE)
+  : null
+
+const messageRateLimiter: RateLimiter | null = RATE_LIMIT_ENABLED
+  ? createRateLimiter(RATE_LIMIT_MESSAGES_PER_MINUTE)
+  : null
+
+// Set up logging for rate limit transitions
+if (httpRateLimiter?.setLogger) {
+  httpRateLimiter.setLogger((_, ip) => {
+    log.warning(`Rate limit exceeded for HTTP requests from ${ip}`)
+  })
+}
+if (wsRateLimiter?.setLogger) {
+  wsRateLimiter.setLogger((_, ip) => {
+    log.warning(`Rate limit exceeded for WebSocket connections from ${ip}`)
+  })
+}
+if (messageRateLimiter?.setLogger) {
+  messageRateLimiter.setLogger((_, ip) => {
+    log.warning(`Rate limit exceeded for WebSocket messages from ${ip}`)
+  })
+}
+
+// Track sockets held for rate-limit backpressure
+interface HeldSocket {
+  socket: any
+  timer: NodeJS.Timeout
+}
+const heldSockets: HeldSocket[] = []
+const MAX_HELD_SOCKETS = 512
+const HELD_SOCKET_TIMEOUT = 30_000 // 30 seconds
 
 const wss = new WebSocketServer({
   onConnection: handleLogin,
   onError: err => log.error(err),
+  messageRateLimiter: messageRateLimiter
+    ? (ip: string) => messageRateLimiter.check(ip)
+    : undefined,
+  trustProxy: TRUST_PROXY,
 })
 
 const server = http.createServer(async (req, res) => {
   try {
+    // Apply HTTP rate limit
+    if (httpRateLimiter) {
+      const clientIp = getClientIp(req, TRUST_PROXY)
+      if (!httpRateLimiter.check(clientIp)) {
+        // Rate limit exceeded: don't respond, let client timeout
+        // Hold the socket for a bit and then destroy it
+        if (req.socket) {
+          if (heldSockets.length < MAX_HELD_SOCKETS) {
+            const timer = setTimeout(() => {
+              req.socket?.destroy()
+              const index = heldSockets.findIndex(h => h.socket === req.socket)
+              if (index !== -1) {
+                heldSockets.splice(index, 1)
+              }
+            }, HELD_SOCKET_TIMEOUT)
+            timer.unref()
+            heldSockets.push({ socket: req.socket, timer })
+          } else {
+            // Too many held sockets, destroy immediately
+            req.socket.destroy()
+          }
+        }
+        return
+      }
+    }
+
     const url = req.url || '/'
 
     if (url === '/ws') {
@@ -177,6 +261,30 @@ server.on('upgrade', (request, socket, head) => {
   const url = request.url || '/'
 
   if (url === '/ws') {
+    // Apply WebSocket connection rate limit
+    if (wsRateLimiter) {
+      const clientIp = getClientIp(request, TRUST_PROXY)
+      if (!wsRateLimiter.check(clientIp)) {
+        // Rate limit exceeded: don't upgrade, let client timeout
+        // Hold the socket for a bit and then destroy it
+        if (heldSockets.length < MAX_HELD_SOCKETS) {
+          const timer = setTimeout(() => {
+            socket.destroy()
+            const index = heldSockets.findIndex(h => h.socket === socket)
+            if (index !== -1) {
+              heldSockets.splice(index, 1)
+            }
+          }, HELD_SOCKET_TIMEOUT)
+          timer.unref()
+          heldSockets.push({ socket, timer })
+        } else {
+          // Too many held sockets, destroy immediately
+          socket.destroy()
+        }
+        return
+      }
+    }
+
     wss.handleUpgrade(request, socket, head)
   } else {
     socket.destroy()
@@ -186,6 +294,27 @@ server.on('upgrade', (request, socket, head) => {
 // Graceful shutdown
 const gracefulShutdown = () => {
   log.info('Shutting down')
+
+  // Stop rate limiters
+  if (httpRateLimiter) {
+    httpRateLimiter.stop()
+  }
+  if (wsRateLimiter) {
+    wsRateLimiter.stop()
+  }
+  if (messageRateLimiter) {
+    messageRateLimiter.stop()
+  }
+
+  // Clean up held sockets
+  for (const held of heldSockets) {
+    clearTimeout(held.timer)
+    try {
+      held.socket.destroy()
+    } catch {}
+  }
+  heldSockets.length = 0
+
   wss.closeAll()
   server.closeAllConnections()
   closeDatabase()
@@ -204,6 +333,14 @@ const gracefulShutdown = () => {
 
 process.on('SIGINT', gracefulShutdown)
 process.on('SIGTERM', gracefulShutdown)
+
+// Initialize database before starting the server
+try {
+  initDatabase()
+} catch (err) {
+  log.critical(err instanceof Error ? err.message : String(err))
+  process.exit(1)
+}
 
 server.listen(Number(PORT), () => {
   log.info(`Listening on port ${PORT}`)

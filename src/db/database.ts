@@ -1,17 +1,120 @@
 import { DatabaseSync } from 'node:sqlite'
 import { mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import { DATABASE_PATH } from '../config.js'
 import type { MediaItem } from '../backends/types.js'
 
 let instance: DatabaseSync | null = null
+
+/**
+ * Initialize the database on startup. This checks that the database directory
+ * is writable and creates the schema if needed.
+ * Throws an error with a detailed message if initialization fails.
+ */
+export function initDatabase(): void {
+  const resolvedPath = resolve(DATABASE_PATH)
+  const dbDir = dirname(resolvedPath)
+
+  // Get process UID and GID (available on Unix-like systems)
+  let uidGidInfo = ''
+  if (
+    typeof process.getuid === 'function' &&
+    typeof process.getgid === 'function'
+  ) {
+    const uid = process.getuid()
+    const gid = process.getgid()
+    uidGidInfo = ` (running as UID ${uid}, GID ${gid})`
+  }
+
+  // Try to create the directory
+  try {
+    mkdirSync(dbDir, { recursive: true })
+  } catch (err) {
+    const systemError = err instanceof Error ? err.message : String(err)
+    throw new Error(
+      `Failed to create database directory.\n` +
+        `Database path: ${resolvedPath}\n` +
+        `Directory: ${dbDir}${uidGidInfo}\n\n` +
+        `If you mounted a host directory into the container, make sure it is writable.\n` +
+        `Example fix: mkdir -p ./data && sudo chown -R 1000:1000 ./data\n\n` +
+        `Alternatively, set DATABASE_PATH to a writable location.\n\n` +
+        `System error: ${systemError}`
+    )
+  }
+
+  // Try to open/create the database and set up schema
+  try {
+    instance = new DatabaseSync(resolvedPath)
+
+    // Set PRAGMAs
+    instance.exec('PRAGMA journal_mode = WAL')
+    instance.exec('PRAGMA foreign_keys = ON')
+
+    // Create schema
+    instance.exec(`
+      CREATE TABLE IF NOT EXISTS rooms (
+        code TEXT PRIMARY KEY,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS media (
+        guid TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        summary TEXT NOT NULL DEFAULT '',
+        year TEXT NOT NULL DEFAULT '',
+        art TEXT NOT NULL DEFAULT '',
+        director TEXT,
+        rating TEXT NOT NULL DEFAULT '',
+        key TEXT NOT NULL DEFAULT '',
+        type TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        room_code TEXT NOT NULL REFERENCES rooms(code) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        UNIQUE(room_code, name)
+      );
+
+      CREATE TABLE IF NOT EXISTS room_media (
+        room_code TEXT NOT NULL REFERENCES rooms(code) ON DELETE CASCADE,
+        media_guid TEXT NOT NULL REFERENCES media(guid) ON DELETE CASCADE,
+        position INTEGER NOT NULL,
+        PRIMARY KEY (room_code, media_guid)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_room_media_position
+        ON room_media(room_code, position);
+
+      CREATE TABLE IF NOT EXISTS swipes (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        media_guid TEXT NOT NULL REFERENCES media(guid) ON DELETE CASCADE,
+        wants_to_watch INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (user_id, media_guid)
+      );
+    `)
+  } catch (err) {
+    const systemError = err instanceof Error ? err.message : String(err)
+    throw new Error(
+      `Failed to initialize database.\n` +
+        `Database path: ${resolvedPath}\n` +
+        `Directory: ${dbDir}${uidGidInfo}\n\n` +
+        `If you mounted a host directory into the container, make sure it is writable.\n` +
+        `Example fix: mkdir -p ./data && sudo chown -R 1000:1000 ./data\n\n` +
+        `Alternatively, set DATABASE_PATH to a writable location.\n\n` +
+        `System error: ${systemError}`
+    )
+  }
+}
 
 export function getDatabase(): DatabaseSync {
   if (instance) {
     return instance
   }
 
-  // Create directory if it doesn't exist
+  // Create directory if it doesn't exist (fallback for backward compatibility)
   mkdirSync(dirname(DATABASE_PATH), { recursive: true })
 
   // Open database

@@ -43,6 +43,26 @@ First, build the Docker image:
 docker build -t moviematch:local .
 ```
 
+#### Important: Directory Permissions
+
+When mounting a host directory into the container, it **must be writable by UID 1000** (the `node` user inside the container). If the directory is not writable, the container will start but fail when the first user tries to join.
+
+Set up the directory with the correct permissions:
+
+```bash
+mkdir -p ./data && sudo chown -R 1000:1000 ./data
+```
+
+If you don't set the correct permissions, you will see an error message like:
+```
+Failed to initialize database.
+Database path: /data/moviematch.db
+Directory: /data (running as UID 1000, GID 1000)
+
+If you mounted a host directory into the container, make sure it is writable.
+Example fix: mkdir -p ./data && sudo chown -R 1000:1000 ./data
+```
+
 #### With docker-compose (recommended)
 
 The easiest way to run MovieMatch with Docker is using docker-compose. See the [docker-compose documentation](./docs/docker-compose.markdown) for details.
@@ -57,7 +77,7 @@ docker run -d \
   -e PLEX_URL=https://plex.example.com:32400 \
   -e PLEX_TOKEN=your_token_here \
   -p 8000:8000 \
-  -v moviematch-data:/data \
+  -v ./data:/data \
   moviematch:local
 ```
 
@@ -69,11 +89,11 @@ docker run -d \
   -e JELLYFIN_URL=https://jellyfin.example.com \
   -e JELLYFIN_API_KEY=your_api_key_here \
   -p 8000:8000 \
-  -v moviematch-data:/data \
+  -v ./data:/data \
   moviematch:local
 ```
 
-The `-v moviematch-data:/data` flag creates a persistent volume so your ratings and matches survive container restarts.
+The `-v ./data:/data` flag binds a host directory to the container, so your ratings and matches persist across restarts.
 
 ## Configuration
 
@@ -96,6 +116,11 @@ The following variables are supported via a `.env` file or environment variables
 | `LINK_TYPE`                 | The method to use for opening match links (**Plex only**; Jellyfin always links to its web UI)                                                                     | No       | `app` (can be `app`, `http`, or `plex.tv`)                                         |
 | `LOG_LEVEL`                 | How much the server should log                                                                                                                                        | No       | `INFO` (can be `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`)                 |
 | `MOVIE_BATCH_SIZE`          | How many movies to load initially. Leave this alone unless you run out of cards really quickly.                                                                    | No       | 25                                                                                 |
+| `RATE_LIMIT_ENABLED`        | Enable rate limiting to protect against abuse. When enabled, requests exceeding the per-minute limits will not receive a response and will time out.               | No       | `true`                                                                             |
+| `RATE_LIMIT_HTTP_PER_MINUTE` | Maximum HTTP requests per IP address per minute                                                                                                                    | No       | 300                                                                                |
+| `RATE_LIMIT_WS_PER_MINUTE`   | Maximum WebSocket connection attempts per IP address per minute                                                                                                   | No       | 20                                                                                 |
+| `RATE_LIMIT_MESSAGES_PER_MINUTE` | Maximum WebSocket messages per IP address per minute                                                                                                           | No       | 300                                                                                |
+| `TRUST_PROXY`               | Trust `X-Forwarded-For` header for client IP detection. **Only enable if MovieMatch runs behind a trusted reverse proxy** (nginx, HAProxy, Apache). When disabled, each rate limit applies per proxy IP. When enabled, limits apply per origin IP. | No       | `false`                                                                            |
 
 ## Share and Export
 

@@ -42,6 +42,40 @@ export const JELLYFIN_USER_ID = getEnvTrimmed('JELLYFIN_USER_ID')
 export const DATABASE_PATH =
   getEnvTrimmed('DATABASE_PATH') ?? './data/moviematch.db'
 
+// Rate limiting configuration
+const parseRateLimitConfig = (name: string, defaultValue: number): number => {
+  const value = getEnvTrimmed(name)
+  if (value === undefined) {
+    return defaultValue
+  }
+  const parsed = Number(value)
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`${name} must be a non-negative integer, got '${value}'`)
+  }
+  return parsed
+}
+
+export const RATE_LIMIT_ENABLED =
+  getEnvTrimmed('RATE_LIMIT_ENABLED')?.toLowerCase() !== 'false'
+
+export const RATE_LIMIT_HTTP_PER_MINUTE = parseRateLimitConfig(
+  'RATE_LIMIT_HTTP_PER_MINUTE',
+  300
+)
+
+export const RATE_LIMIT_WS_PER_MINUTE = parseRateLimitConfig(
+  'RATE_LIMIT_WS_PER_MINUTE',
+  20
+)
+
+export const RATE_LIMIT_MESSAGES_PER_MINUTE = parseRateLimitConfig(
+  'RATE_LIMIT_MESSAGES_PER_MINUTE',
+  300
+)
+
+export const TRUST_PROXY =
+  getEnvTrimmed('TRUST_PROXY')?.toLowerCase() === 'true'
+
 let versionCache: string | null = null
 
 export function getVersion(): string {

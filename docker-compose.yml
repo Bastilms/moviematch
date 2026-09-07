@@ -4,7 +4,12 @@
 # 1. Build the Docker image: docker build -t moviematch:local .
 # 2. Copy .env.example to .env: cp .env.example .env
 # 3. Edit .env with your media server configuration
-# 4. Start the services: docker compose up
+# 4. Ensure the ./data directory has correct permissions:
+#    mkdir -p ./data && sudo chown -R 1000:1000 ./data
+# 5. Start the services: docker compose up
+#
+# NOTE: This uses a bind mount to ./data. The directory must be writable
+# by UID 1000 (the 'node' user inside the container).
 
 services:
   moviematch:
@@ -17,7 +22,4 @@ services:
     env_file:
       - .env
     volumes:
-      - moviematch-data:/data
-
-volumes:
-  moviematch-data:
+      - ./data:/data

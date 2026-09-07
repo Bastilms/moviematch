@@ -3,21 +3,26 @@ import type { IncomingMessage } from 'node:http'
 import type { Duplex } from 'node:stream'
 import { WebSocketServer as WSServer } from 'ws'
 import type { WebSocket as WSWebSocket } from 'ws'
+import { getClientIp } from './rateLimit.js'
 
 export class WebSocketError extends Error {}
 
 interface Options {
   onConnection: (ws: WebSocket) => void
   onError: (error: Error) => void
+  messageRateLimiter?: (ip: string) => boolean
+  trustProxy?: boolean
 }
 
 export class WebSocketServer {
   private wss: WSServer
   private options: Options
   private connections: Set<WebSocket> = new Set()
+  private messageRateLimiterFn?: (ip: string) => boolean
 
   constructor(options: Options) {
     this.options = options
+    this.messageRateLimiterFn = options.messageRateLimiter
     // Limit payload size to 64 KiB to protect against DoS attacks via oversized messages.
     // Legitimate messages (login, response, nextBatch) are much smaller.
     this.wss = new WSServer({ noServer: true, maxPayload: 64 * 1024 })
@@ -33,6 +38,15 @@ export class WebSocketServer {
         const webSocket = new WebSocket(ws, err => {
           this.options.onError(err)
         })
+        // Store the request so we can extract the IP later if needed
+        webSocket._request = request
+        // Extract and store the client IP
+        webSocket.remoteAddress = getClientIp(
+          request,
+          this.options.trustProxy ?? false
+        )
+        // Attach the message rate limiter function
+        webSocket._messageRateLimiter = this.messageRateLimiterFn
         this.connections.add(webSocket)
         webSocket.once('close', () => {
           this.connections.delete(webSocket)
@@ -55,6 +69,9 @@ export class WebSocket extends EventEmitter {
   private ws: WSWebSocket
   private _isClosed = false
   private onError: (err: Error) => void
+  public _request?: IncomingMessage
+  public remoteAddress?: string
+  public _messageRateLimiter?: (ip: string) => boolean
 
   constructor(ws: WSWebSocket, onError: (err: Error) => void) {
     super()
@@ -62,6 +79,14 @@ export class WebSocket extends EventEmitter {
     this.onError = onError
 
     ws.on('message', (data: Buffer) => {
+      // Check message rate limit if available
+      if (this._messageRateLimiter && this.remoteAddress) {
+        if (!this._messageRateLimiter(this.remoteAddress)) {
+          // Rate limit exceeded: silently discard the message
+          return
+        }
+      }
+
       // Convert Buffer to UTF-8 string
       const message = data.toString('utf-8')
       this.emit('message', message)
