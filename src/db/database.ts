@@ -228,15 +228,25 @@ export function upsertMedia(items: MediaItem[]): void {
   `)
 
   for (const item of items) {
+    // Defensively convert all values to ensure they can be bound to SQLite parameters
     stmt.run(
-      item.guid,
-      item.title,
-      item.summary,
-      item.year,
-      item.art,
-      item.director ?? null,
-      item.rating,
-      item.key,
+      // guid: ensure it's a non-empty string (required)
+      String(item.guid || ''),
+      // title: ensure it's a string
+      String(item.title || ''),
+      // summary: ensure it's a string
+      String(item.summary || ''),
+      // year: ensure it's a string
+      String(item.year || ''),
+      // art: ensure it's a string
+      String(item.art || ''),
+      // director: null for undefined/null, otherwise string
+      item.director == null ? null : String(item.director),
+      // rating: ensure it's a string
+      String(item.rating || ''),
+      // key: ensure it's a string
+      String(item.key || ''),
+      // type: pass through (should be 'movie' or 'show')
       item.type
     )
   }

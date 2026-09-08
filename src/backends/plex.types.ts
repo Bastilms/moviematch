@@ -47,17 +47,17 @@ export interface PlexDirectory {
 export interface PlexVideo {
   Metadata: Array<{
     ratingKey: string
-    key: string
-    guid: string
+    key?: string | number
+    guid?: string
     studio: string
     type: 'movie' | 'artist' | 'photo' | 'show'
-    title: string
+    title?: string
     contentRating: string
-    summary: string
-    rating: string
+    summary?: string
+    rating?: string | number
     viewCount: string
     lastViewedAt: string
-    year: string
+    year?: string | number
     tagline: string
     thumb: string
     art?: string

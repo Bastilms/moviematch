@@ -35,9 +35,12 @@ export function setLevel(level: string): void {
 /**
  * Register a value to be redacted from all log output.
  * Useful for API keys, tokens, and other secrets.
+ * Note: Values shorter than 8 characters are ignored to avoid masking common words
+ * or utility strings that appear in logs (e.g., "d", "test", "data").
+ * Real secrets like Plex tokens (20 chars) and Jellyfin API keys (32 chars) exceed this threshold.
  */
 export function addRedactedValue(value: string): void {
-  if (value && value.length > 0) {
+  if (value && value.length >= 8) {
     redactedValues.add(value)
   }
 }

@@ -31,12 +31,13 @@ html {
   --s4: 2rem;
   --s5: 3rem;
   --s6: 4rem;
-  --color-primary: #333;
-  --color-secondary: #fff;
-  --color-tertiary: hsl(200, 5%, 30%);
-  --color-brand: #e64747;
-  --color-brand-alt: hsl(240, 50%, 70%);
-  --color-line: #dedede;
+  --ink: #12111f;
+  --ink-raised: #1b1a2e;
+  --edge: #2f2c4a;
+  --bone: #eeecf5;
+  --muted: #8b87a8;
+  --flare: #e64747;
+  --indigo: #4747e6;
 
   font-family: system-ui;
   touch-action: manipulation;
@@ -45,9 +46,11 @@ html {
 body {
   text-rendering: optimizeSpeed;
   line-height: 1.5;
-  background-image: url(assets/background-grain.png), url(assets/background.svg);
-  background-size: auto, cover;
-  background-repeat: repeat, no-repeat;
+  background-color: var(--ink);
+  background-image: url(assets/background-grain.png);
+  background-size: auto;
+  background-repeat: repeat;
+  color: var(--bone);
 }
 
 .app:not([hidden]) {
@@ -79,20 +82,21 @@ body {
   --height: min(calc(80vmin * 1.5), 80vh);
 
   display: inline-block;
-  background-color: var(--color-primary);
+  background-color: var(--ink-raised);
   width: calc(var(--height) * 0.6666);
   height: var(--height);
-  border-radius: 6px;
+  border-radius: 8px;
   overflow: hidden;
-  box-shadow: -1px 5px 15px 3px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   position: relative;
-  border: 1px solid var(--color-line);
-  transition: border 100ms ease-in-out;
+  border: 1px solid var(--edge);
+  transition: border 100ms ease-in-out, box-shadow 100ms ease-in-out;
 }
 
 @media (hover: hover) {
   a.card:hover {
-    border: 1px solid var(--color-brand);
+    border: 1px solid var(--flare);
+    box-shadow: 0 8px 32px rgba(230, 71, 71, 0.3);
   }
 }
 
@@ -113,16 +117,17 @@ body {
   background-image:
     linear-gradient(
       179deg,
-      rgba(238, 238, 238, 0) 0%,
-      rgba(238, 238, 238, 0) 20%,
-      rgba(0, 0, 0, 0.31) 40%,
-      rgba(0, 0, 0, 0.9) 100%
+      rgba(18, 17, 31, 0) 0%,
+      rgba(18, 17, 31, 0) 20%,
+      rgba(0, 0, 0, 0.5) 40%,
+      rgba(0, 0, 0, 0.95) 100%
     );
   text-align: left;
-  color: var(--color-secondary);
-  font-weight: bold;
+  color: var(--bone);
+  font-weight: 600;
   font-family: system-ui;
   font-size: 1rem;
+  line-height: 1.3;
 }
 
 .card-stack {
@@ -138,8 +143,8 @@ body {
 
 .card-stack:empty::after {
   content: var(--empty-text);
-  font-weight: bold;
-  color: var(--color-tertiary);
+  font-weight: 600;
+  color: var(--muted);
   position: absolute;
   top: 50%;
   left: 50%;
@@ -209,18 +214,33 @@ body {
   grid-auto-columns: 1fr;
   grid-auto-flow: column;
   gap: var(--s5);
-  margin-top: var(--s3);
+  margin-top: var(--s4);
+  margin-bottom: env(safe-area-inset-bottom, 0);
 }
 
 .rate-controls button {
   all: unset;
-  font-size: 3rem;
+  font-size: 2.5rem;
   cursor: pointer;
   transition: transform 200ms linear;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  min-width: 56px;
+  border-radius: var(--s2);
+  background-color: var(--ink-raised);
+  border: 1px solid var(--edge);
+}
+
+.rate-controls button:focus-visible {
+  outline: 3px solid var(--indigo);
+  outline-offset: 2px;
 }
 
 .rate-controls[disabled] button {
-  opacity: 0.5;
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 @media screen and (hover: hover) {
@@ -239,7 +259,7 @@ body {
 
 .matches-section hr {
   width: 80vw;
-  border: 0.5px solid var(--color-brand-alt);
+  border: 1px solid var(--edge);
   border-radius: 2px;
   margin: auto;
   position: relative;
@@ -252,38 +272,43 @@ body {
   bottom: 0;
   left: 0;
   display: block;
-  font-size: 0.7rem;
-  background: var(--color-brand-alt);
-  color: var(--color-secondary);
-  padding: 0.25rem 0.5rem 0.25rem 0.25rem;
-  border-radius: 0 1rem 1rem 0;
-  box-shadow: -1px 1px 10px 3px rgba(0, 0, 0, 0.1);
-  font-weight: bold;
+  font-size: 0.8rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.15em;
+  background: var(--indigo);
+  color: var(--bone);
+  padding: 0.35rem 0.75rem;
+  border-radius: 0 0.5rem 0.5rem 0;
+  box-shadow: 0 4px 16px rgba(71, 71, 230, 0.2);
+  font-weight: 700;
   transform: translate(-90%, 50%);
 }
 
 .matches-title {
   font-family: system-ui;
   font-weight: 600;
-  font-size: 1.125rem;
-  color: var(--color-primary);
-  margin-top: var(--s1);
+  font-size: 1.25rem;
+  color: var(--bone);
+  margin-top: var(--s2);
+  margin-bottom: var(--s3);
 }
 
 .matches-title .matches-count {
-  width: 1.125rem;
-  height: 1.125rem;
-  border-radius: 100%;
-  background-color: var(--color-brand);
-  color: var(--color-secondary);
-  font-family: monospace;
-  font-weight: bold;
-  font-size: 1rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background-color: var(--flare);
+  color: var(--bone);
+  font-family: system-ui;
+  font-weight: 700;
+  font-size: 0.875rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   position: relative;
-  top: -3px;
+  top: -2px;
+  margin-right: 0.5rem;
 }
 
 .matches-title .matches-count::before {
@@ -291,7 +316,7 @@ body {
 }
 
 .matches-title .matches-count[data-count='0'] {
-  background-color: var(--color-primary);
+  background-color: var(--muted);
 }
 
 .matches-actions-container {
@@ -303,22 +328,28 @@ body {
 }
 
 .matches-action {
-  background: var(--color-brand);
-  color: var(--color-secondary);
+  background: var(--flare);
+  color: var(--ink);
   border: none;
-  border-radius: var(--s2);
-  padding: var(--s2) var(--s3);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1.5rem;
   cursor: pointer;
   font-size: 1rem;
-  font-weight: 500;
+  font-weight: 600;
   text-decoration: none;
   display: inline-block;
-  transition: opacity 200ms ease-in-out;
+  transition: background-color 200ms ease-in-out, box-shadow 200ms ease-in-out;
+}
+
+.matches-action:focus-visible {
+  outline: 3px solid var(--indigo);
+  outline-offset: 2px;
 }
 
 @media screen and (hover: hover) {
   .matches-action:hover {
-    opacity: 0.8;
+    background-color: #f55;
+    box-shadow: 0 4px 12px rgba(230, 71, 71, 0.4);
   }
 }
 
@@ -355,108 +386,141 @@ body {
   top: 50%;
   content: var(--i18n-no-matches);
   transform: translate(-50%, -50%);
-  font-weight: bold;
-  color: var(--color-tertiary);
+  font-weight: 600;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.4;
 }
 
 .login-section:not([hidden]) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding-top: var(--s3);
+  padding-top: var(--s4);
+  padding-bottom: var(--s4);
 }
 
 .login-section .logo {
   width: clamp(4rem, 50%, 15.5rem);
   margin-bottom: var(--s6);
-  color: var(--color-brand);
+  color: var(--flare);
 }
 
 .login-form {
   display: grid;
   grid-template-columns: 1fr;
   grid-auto-rows: min-content;
-  gap: 1rem;
-  width: 80%;
+  gap: 0.75rem;
+  width: 90%;
+  max-width: 28rem;
 }
 
 .login-form label {
-  margin-left: var(--s1);
-  font-size: 1.2rem;
+  font-size: 0.875rem;
   font-weight: 600;
-  margin-bottom: calc(var(--s1) * -1);
-  align-self: center;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: -0.25rem;
+  margin-left: 0.25rem;
+}
+
+.login-form label:nth-of-type(2) {
+  margin-top: var(--s2);
 }
 
 .login-form input {
-  background: transparent;
-  border: 2px solid var(--color-brand);
-  border-radius: 0.3rem;
-  padding: var(--s1);
-  font-size: 1.2rem;
-  flex-grow: 1;
-  margin: 0;
+  background: var(--ink-raised);
+  border: 2px solid var(--edge);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  color: var(--bone);
   width: 100%;
+}
+
+.login-form input:focus-visible {
+  outline: none;
+  border-color: var(--indigo);
+  box-shadow: 0 0 0 3px rgba(71, 71, 230, 0.15);
+}
+
+.login-form input[name='roomCode'] {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1.75rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2em;
+  font-weight: 700;
+  text-align: center;
+  padding: 1.25rem 1rem;
+  text-transform: uppercase;
 }
 
 .login-form .room-code-container {
   display: flex;
-  max-width: 100%;
+  gap: 0;
+  width: 100%;
 }
 
 .login-form .room-code-container input {
-  border-bottom-right-radius: 0;
-  border-top-right-radius: 0;
+  flex-grow: 1;
+  border-radius: 0.5rem 0 0 0.5rem;
 }
 
 .login-form .room-code-container .generate-button {
   appearance: none;
-  border: none;
-  background: var(--color-brand);
-  color: var(--color-secondary);
+  border: 2px solid var(--edge);
+  background: var(--indigo);
+  color: var(--bone);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0 1rem;
   margin: 0;
-  overflow: visible;
-  grid-column: 2;
-  border-radius: 0 0.3rem 0.3rem 0;
+  font-weight: 600;
+  font-size: 0.875rem;
+  border-radius: 0 0.5rem 0.5rem 0;
+  transition: background-color 200ms ease-in-out, box-shadow 200ms ease-in-out;
+}
+
+.login-form .room-code-container .generate-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(71, 71, 230, 0.3);
+}
+
+@media screen and (hover: hover) {
+  .login-form .room-code-container .generate-button:hover {
+    background-color: #55f;
+  }
 }
 
 .login-form .generate-button abbr {
-  padding: 0 0.5rem;
   text-decoration: none;
 }
 
 .login-form .submit-button {
   border: none;
-  grid-column: 1 / -1;
-  margin-top: var(--s6);
-  background-color: var(--color-brand);
-  color: var(--color-secondary);
-  padding: var(--s2) var(--s1);
-  border-radius: var(--s4);
-  font-size: 1.2rem;
-  font-weight: bold;
+  margin-top: var(--s4);
+  background-color: var(--flare);
+  color: var(--ink);
+  padding: 1rem 1.5rem;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  font-weight: 700;
   cursor: pointer;
+  transition: background-color 200ms ease-in-out, box-shadow 200ms ease-in-out;
 }
 
-@media screen and (min-width: 48em) {
-  .login-form {
-    grid-template-columns: 10rem 1fr;
-    width: 80%;
-    max-width: 35rem;
-  }
+.login-form .submit-button:focus-visible {
+  outline: 3px solid var(--indigo);
+  outline-offset: 2px;
+}
 
-  .login-form .input-description {
-    grid-column: 2;
-  }
-
-  .login-form .submit-button {
-    justify-self: end;
-    width: 200px;
-    grid-column: 2;
+@media screen and (hover: hover) {
+  .login-form .submit-button:hover {
+    background-color: #f55;
+    box-shadow: 0 4px 12px rgba(230, 71, 71, 0.3);
   }
 }
 
@@ -464,8 +528,9 @@ footer {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: hsl(240, 40%, 40%);
-  font-size: 0.5rem;
-  font-weight: bold;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 500;
   padding: 1rem 0;
+  margin-top: auto;
 }

@@ -206,22 +206,30 @@ export class PlexBackend implements MediaBackend {
     const result: MediaItem[] = []
     for (const movie of movies) {
       if (!movie.thumb) {
+        const movieTitle = String(movie.title ?? 'Unknown')
         log.debug(
-          `Item ${movie.title} (guid: ${movie.guid}) has no thumb, skipping`
+          `Item ${movieTitle} (guid: ${movie.guid}) has no thumb, skipping`
         )
         continue
       }
+
+      if (!movie.guid) {
+        const movieTitle = String(movie.title ?? 'Unknown')
+        log.debug(`Item ${movieTitle} has no guid, skipping`)
+        continue
+      }
+
       result.push({
-        guid: movie.guid,
-        title: movie.title,
-        summary: movie.summary,
-        year: movie.year,
+        guid: String(movie.guid),
+        title: String(movie.title ?? ''),
+        summary: String(movie.summary ?? ''),
+        year: String(movie.year ?? ''),
         art: `/poster/${encodeURIComponent(
           movie.thumb.replace('/library/metadata/', '')
         )}`,
         director: (movie.Director ?? [{ tag: undefined }])[0].tag,
-        rating: movie.rating,
-        key: movie.key,
+        rating: String(movie.rating ?? ''),
+        key: String(movie.key ?? ''),
         type: movie.type,
       })
     }
