@@ -101,7 +101,9 @@
     data-i18n-list-conjunction="${LIST_CONJUNCTION}"
     data-i18n-match-likers-template="${MATCHES_SECTION_CARD_LIKERS}"
     data-i18n-share-copied="${MATCHES_SECTION_SHARE_COPIED}"
+    data-i18n-no-summary="${CARD_NO_SUMMARY}"
     data-base-path="${ROOT_PATH}"
+    data-backend="${BACKEND}"
   >
     <main class="app">
       <section class="login-section">
@@ -115,11 +117,17 @@
           <input type="text" name="name" autocomplete="given-name" required />
           <label for="room-code">${LOGIN_ROOM_CODE}</label>
           <div class="room-code-container">
-            <input type="text" name="roomCode" required pattern="[0-9A-Z]{4}" />
+            <input type="text" name="roomCode" required pattern="[0-9A-Z]{4}" autocapitalize="characters" autocomplete="off" spellcheck="false" />
             <button type="button" class="generate-button js-generate-room-code">
               <abbr title="Generate a new room code">Generate</abbr>
             </button>
           </div>
+          <label for="password" class="js-password-label" hidden>${LOGIN_PASSWORD}</label>
+          <input type="password" name="password" class="js-password-input" autocomplete="current-password" hidden />
+          <label class="playlist-option js-playlist-label" hidden>
+            <input type="checkbox" name="createPlaylist" class="js-playlist-checkbox" />
+            ${LOGIN_CREATE_PLAYLIST}
+          </label>
           <button type="submit" class="submit-button">${LOGIN_SUBMIT}</button>
         </form>
       </section>
@@ -142,6 +150,7 @@
         <div class="matches-actions-container">
           <button type="button" class="matches-action js-share-button">${MATCHES_SECTION_SHARE}</button>
           <a class="matches-action js-export-csv" download>${MATCHES_SECTION_EXPORT_CSV}</a>
+          <a class="matches-action js-export-likes" download>${MATCHES_SECTION_EXPORT_LIKES}</a>
         </div>
         <p class="matches-title">
           <span class="matches-count js-matches-count" data-count="0"></span>

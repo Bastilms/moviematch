@@ -2,6 +2,8 @@
   "LANG": "de",
   "LOGIN_NAME": "Name",
   "LOGIN_ROOM_CODE": "Zimmercode",
+  "LOGIN_PASSWORD": "Jellyfin-Passwort (optional)",
+  "LOGIN_CREATE_PLAYLIST": "Matches zusätzlich als Jellyfin-Playlist speichern",
   "LOGIN_SUBMIT": "Abschicken",
   "RATE_SECTION_LOADING": "Lade Filme...",
   "RATE_SECTION_EXHAUSTED_CARDS": "Wir haben das Ende der Fahrt erreicht 🎢. Bitte achten Sie auf Ihren Kopf auf dem Weg nach draußen.",
@@ -12,5 +14,7 @@
   "MATCHES_SECTION_SHARE": "Link teilen",
   "MATCHES_SECTION_SHARE_COPIED": "Link kopiert!",
   "MATCHES_SECTION_EXPORT_CSV": "CSV exportieren",
-  "LIST_CONJUNCTION": "und"
+  "MATCHES_SECTION_EXPORT_LIKES": "Meine Likes exportieren",
+  "LIST_CONJUNCTION": "und",
+  "CARD_NO_SUMMARY": "Keine Beschreibung vorhanden."
 }

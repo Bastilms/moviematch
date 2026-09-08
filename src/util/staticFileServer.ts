@@ -35,9 +35,10 @@ export async function serveFile(
     'public',
   )
 
+  const cleanPath = normalizeURL(url)
   const normalizedPath = join(
     baseDir,
-    url === '/' ? '/index.html' : normalizeURL(url),
+    cleanPath === '/' ? '/index.html' : cleanPath,
   )
 
   log.debug(`serveFile(${normalizedPath})`)

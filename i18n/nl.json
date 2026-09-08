@@ -2,6 +2,8 @@
   "LANG": "nl",
   "LOGIN_NAME": "Naam",
   "LOGIN_ROOM_CODE": "Kamercode",
+  "LOGIN_PASSWORD": "Jellyfin-wachtwoord (optioneel)",
+  "LOGIN_CREATE_PLAYLIST": "Matches ook opslaan als Jellyfin-afspeellijst",
   "LOGIN_SUBMIT": "Inloggen",
   "RATE_SECTION_LOADING": "Films laden...",
   "RATE_SECTION_EXHAUSTED_CARDS": "We hebben het einde van de rit bereikt 🎢. Let op je hoofd op de weg naar buiten.",
@@ -12,5 +14,7 @@
   "MATCHES_SECTION_SHARE": "Link delen",
   "MATCHES_SECTION_SHARE_COPIED": "Link gekopieerd!",
   "MATCHES_SECTION_EXPORT_CSV": "CSV exporteren",
-  "LIST_CONJUNCTION": "en"
+  "MATCHES_SECTION_EXPORT_LIKES": "Mijn likes exporteren",
+  "LIST_CONJUNCTION": "en",
+  "CARD_NO_SUMMARY": "Geen beschrijving beschikbaar."
 }

@@ -18,14 +18,26 @@ export class MovieMatchAPI extends EventTarget {
     })
   }
 
-  async login(user, roomCode) {
+  async login(user, roomCode, password, createPlaylist) {
+    const payload = {
+      name: user,
+      roomCode,
+    }
+
+    // Only include password if it's provided and non-empty
+    if (password) {
+      payload.password = password
+    }
+
+    // Only include createPlaylist if it's explicitly set
+    if (createPlaylist === true) {
+      payload.createPlaylist = true
+    }
+
     this.socket.send(
       JSON.stringify({
         type: 'login',
-        payload: {
-          name: user,
-          roomCode,
-        },
+        payload,
       }),
     )
 

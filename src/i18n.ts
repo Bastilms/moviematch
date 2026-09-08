@@ -1,7 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
-import { getVersion, LINK_TYPE, ROOT_PATH } from './config.js'
+import { getVersion, LINK_TYPE, ROOT_PATH, BACKEND } from './config.js'
 import * as log from './util/logger.js'
 
 const translations: Map<string, Record<string, string>> = new Map()
@@ -138,6 +138,7 @@ export async function translateHTML(
     ...translationContext,
     ROOT_PATH,
     VERSION: version,
+    BACKEND,
     CONFIG_MATCHES_TARGET_TYPE:
       getLinkTypeForRequest(headers) === 'app' ? '_self' : '_blank',
   }

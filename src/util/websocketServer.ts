@@ -4,6 +4,7 @@ import type { Duplex } from 'node:stream'
 import { WebSocketServer as WSServer } from 'ws'
 import type { WebSocket as WSWebSocket } from 'ws'
 import { getClientIp } from './rateLimit.js'
+import type { JellyfinSession } from './jellyfinUser.js'
 
 export class WebSocketError extends Error {}
 
@@ -72,6 +73,9 @@ export class WebSocket extends EventEmitter {
   public _request?: IncomingMessage
   public remoteAddress?: string
   public _messageRateLimiter?: (ip: string) => boolean
+  public jellyfin: JellyfinSession | null = null
+  public playlistEnabled: boolean = false
+  public playlistId: string | null = null
 
   constructor(ws: WSWebSocket, onError: (err: Error) => void) {
     super()

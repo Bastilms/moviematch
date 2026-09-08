@@ -1,7 +1,10 @@
 import * as log from './util/logger.js'
 import { getBackend } from './backends/index.js'
-import { MOVIE_BATCH_SIZE } from './config.js'
+import { MOVIE_BATCH_SIZE, BACKEND } from './config.js'
 import { WebSocket } from './util/websocketServer.js'
+import { authenticateJellyfinUser } from './util/jellyfinUser.js'
+import type { JellyfinSession } from './util/jellyfinUser.js'
+import { syncPlaylist } from './util/jellyfinPlaylist.js'
 import type { MediaItem } from './backends/types.js'
 import {
   ensureRoom,
@@ -15,6 +18,8 @@ import {
   getLikersForMedia,
   getRoomMatches,
   deleteLastSwipe,
+  getRoomMatchGuids,
+  getRoomParticipantNames,
 } from './db/database.js'
 
 interface Response {
@@ -27,6 +32,8 @@ interface WebSocketLoginMessage {
   payload: {
     name: string
     roomCode: string
+    password?: string
+    createPlaylist?: boolean
   }
 }
 
@@ -44,6 +51,8 @@ interface WebSocketLoginResponseMessage {
     | { success: false; reason?: string }
     | {
         success: true
+        jellyfinAuthenticated: boolean
+        playlistEnabled: boolean
         matches: Array<WebSocketMatchMessage['payload']>
         movies: MediaItem[]
       }
@@ -77,9 +86,14 @@ class Session {
   roomCode: string
   userConnections: Map<number, WebSocket> = new Map()
   movieListCache: MediaItem[] = []
+  matchGuids: Set<string> = new Set()
+  playlistSyncTimers: Map<number, NodeJS.Timeout> = new Map()
+  playlistSyncInProgress: Map<number, boolean> = new Map()
 
   constructor(roomCode: string) {
     this.roomCode = roomCode
+    // Initialize matchGuids from database
+    this.matchGuids = getRoomMatchGuids(roomCode)
   }
 
   addConnection = (userId: number, name: string, ws: WebSocket) => {
@@ -93,6 +107,14 @@ class Session {
     log.debug(`User ${name} (id=${userId}) connection closed`)
     this.userConnections.delete(userId)
 
+    // Clean up playlist sync timer for this user
+    const timer = this.playlistSyncTimers.get(userId)
+    if (timer) {
+      clearTimeout(timer)
+      this.playlistSyncTimers.delete(userId)
+    }
+    this.playlistSyncInProgress.delete(userId)
+
     if (this.userConnections.size === 0) {
       log.debug(
         `Session ${this.roomCode} has no active connections, removing from active sessions (data persists in database)`,
@@ -102,8 +124,17 @@ class Session {
   }
 
   handleMessage = async (userId: number, name: string, msg: string) => {
+    let decodedMessage: WebSocketMessage | undefined
     try {
-      const decodedMessage: WebSocketMessage = JSON.parse(msg)
+      decodedMessage = JSON.parse(msg)
+      if (
+        !decodedMessage ||
+        typeof decodedMessage !== 'object' ||
+        !('type' in decodedMessage)
+      ) {
+        log.warning(`Invalid message structure (length: ${msg.length} bytes)`)
+        return
+      }
       switch (decodedMessage.type) {
         case 'nextBatch': {
           log.debug(`${name} asked for the next batch of movies`)
@@ -148,15 +179,8 @@ class Session {
             return
           }
 
-          if (wantsToWatch) {
-            const likers = getLikersForMedia(this.roomCode, guid)
-            if (likers.length >= 2) {
-              const movie = this.movieListCache.find(m => m.guid === guid)
-              if (movie) {
-                this.broadcastMatch(movie, likers)
-              }
-            }
-          }
+          // Reconcile matches after the swipe
+          this.reconcileMatches()
           break
         }
         case 'undo': {
@@ -182,28 +206,8 @@ class Session {
           const { guid, wantsToWatch } = result
           log.debug(`Deleted swipe for ${name}: ${guid}`)
 
-          // Check if this was a match-removing action
-          if (wantsToWatch) {
-            const likersAfter = getLikersForMedia(this.roomCode, guid)
-            if (likersAfter.length < 2) {
-              log.debug(
-                `Match removed for ${guid} after undo (was positive, now has ${likersAfter.length} likers)`,
-              )
-              // Broadcast matchRemoved to all connections
-              for (const ws of this.userConnections.values()) {
-                if (!ws.isClosed) {
-                  ws.send(
-                    JSON.stringify({
-                      type: 'matchRemoved',
-                      payload: {
-                        guid,
-                      },
-                    }),
-                  )
-                }
-              }
-            }
-          }
+          // Reconcile matches after the undo
+          this.reconcileMatches()
 
           // Send undoResponse to the requester
           const ws = this.userConnections.get(userId)
@@ -224,9 +228,14 @@ class Session {
     } catch (err) {
       if (err instanceof SyntaxError) {
         // Invalid JSON - log but don't crash
-        log.warning(`Invalid JSON received: ${msg}`)
+        // Only log message type and length to avoid exposing credentials
+        log.warning(`Invalid JSON received (length: ${msg.length} bytes)`)
       } else {
-        log.error(err, JSON.stringify(msg))
+        // Log error but not the raw message content
+        log.error(
+          `Error handling message (type: ${decodedMessage?.type ?? 'unknown'}, length: ${msg.length} bytes):`,
+          err,
+        )
       }
     }
   }
@@ -317,6 +326,110 @@ class Session {
     }
   }
 
+  reconcileMatches() {
+    const newMatchGuids = getRoomMatchGuids(this.roomCode)
+
+    // Find newly added matches
+    for (const guid of newMatchGuids) {
+      if (!this.matchGuids.has(guid)) {
+        const movie = this.movieListCache.find(m => m.guid === guid)
+        if (movie) {
+          const userNames = getLikersForMedia(this.roomCode, guid)
+          this.broadcastMatch(movie, userNames)
+        }
+      }
+    }
+
+    // Find removed matches
+    for (const guid of this.matchGuids) {
+      if (!newMatchGuids.has(guid)) {
+        for (const ws of this.userConnections.values()) {
+          if (!ws.isClosed) {
+            ws.send(
+              JSON.stringify({
+                type: 'matchRemoved',
+                payload: { guid },
+              }),
+            )
+          }
+        }
+      }
+    }
+
+    // Update stored match guids
+    this.matchGuids = newMatchGuids
+
+    // Schedule playlist sync for all eligible connections
+    this.schedulePlaylistSync()
+  }
+
+  private schedulePlaylistSync() {
+    for (const [userId, ws] of this.userConnections.entries()) {
+      if (ws.playlistEnabled && ws.jellyfin) {
+        this.schedulePlaylistSyncForUser(userId, ws)
+      }
+    }
+  }
+
+  private schedulePlaylistSyncForUser(userId: number, ws: WebSocket) {
+    // Cancel existing timer if any
+    const existingTimer = this.playlistSyncTimers.get(userId)
+    if (existingTimer) {
+      clearTimeout(existingTimer)
+    }
+
+    // Schedule new sync after 3 seconds of inactivity
+    const timer = setTimeout(() => {
+      this.playlistSyncTimers.delete(userId)
+      this.executePlaylistSync(userId, ws)
+    }, 3000)
+
+    // Use unref() to not keep the process alive just for this timer
+    timer.unref()
+
+    this.playlistSyncTimers.set(userId, timer)
+  }
+
+  private async executePlaylistSync(userId: number, ws: WebSocket) {
+    // Prevent concurrent syncs for the same user
+    if (this.playlistSyncInProgress.get(userId)) {
+      return
+    }
+
+    if (!ws.jellyfin || !ws.playlistEnabled) {
+      return
+    }
+
+    this.playlistSyncInProgress.set(userId, true)
+    try {
+      const matchGuids = Array.from(this.matchGuids).sort()
+      const participantNames = getRoomParticipantNames(this.roomCode)
+      const playlistName =
+        participantNames.length > 0
+          ? `${participantNames.join(', ')} – ${this.roomCode}`
+          : this.roomCode
+
+      const playlistId = await syncPlaylist({
+        session: ws.jellyfin,
+        playlistName,
+        itemIds: matchGuids,
+        knownPlaylistId: ws.playlistId,
+      })
+
+      // Update known playlist ID
+      ws.playlistId = playlistId
+    } catch (err) {
+      log.warning(`Failed to sync playlist for user ${userId}:`, err)
+
+      // If it's a 404, reset the playlist ID so it gets recreated next time
+      if (err instanceof Error && err.message.includes('not found')) {
+        ws.playlistId = null
+      }
+    } finally {
+      this.playlistSyncInProgress.set(userId, false)
+    }
+  }
+
   getExistingMatches(userId: number): Array<WebSocketMatchMessage['payload']> {
     const userLiked = getUserLikedGuids(userId)
     const matches = getRoomMatches(this.roomCode)
@@ -359,7 +472,7 @@ export const getSession = (roomCode: string): Session => {
 
 export const handleLogin = (ws: WebSocket): Promise<SessionUser> => {
   return new Promise(resolve => {
-    const handler = (msg: string) => {
+    const handler = async (msg: string) => {
       try {
         const data: WebSocketMessage = JSON.parse(msg)
 
@@ -383,9 +496,16 @@ export const handleLogin = (ws: WebSocket): Promise<SessionUser> => {
             return
           }
 
+          // Extract password and validate it's not logged
+          const password = (data.payload as any).password
+          const hasPassword =
+            typeof password === 'string' && password.length > 0
+
           // Validate inputs
           let roomCode = (data.payload.roomCode ?? '').trim().toUpperCase()
           let name = (data.payload.name ?? '').trim()
+          let jellyfinAuthenticated = false
+          let jellyfinSession: JellyfinSession | null = null
 
           // Validate roomCode format
           if (!/^[0-9A-Z]{4}$/.test(roomCode)) {
@@ -404,34 +524,105 @@ export const handleLogin = (ws: WebSocket): Promise<SessionUser> => {
             return
           }
 
-          // Validate name
-          if (name.length === 0) {
-            log.info('Login rejected: empty name')
+          // Validate name (initial length check for non-Jellyfin logins)
+          if (!hasPassword && (name.length === 0 || name.length > 50)) {
+            log.info(
+              `Login rejected: invalid name length (${name.length} chars)`,
+            )
             const response: WebSocketLoginResponseMessage = {
               type: 'loginResponse',
               payload: {
                 success: false,
-                reason: 'Name cannot be empty.',
+                reason:
+                  name.length === 0
+                    ? 'Name cannot be empty.'
+                    : 'Name must be at most 50 characters.',
               },
             }
             ws.send(JSON.stringify(response))
             return
           }
 
-          if (name.length > 50) {
-            log.info('Login rejected: name too long')
-            const response: WebSocketLoginResponseMessage = {
-              type: 'loginResponse',
-              payload: {
-                success: false,
-                reason: 'Name must be at most 50 characters.',
-              },
+          // Extract createPlaylist flag (only relevant with Jellyfin auth)
+          const createPlaylist =
+            typeof (data.payload as any).createPlaylist === 'boolean'
+              ? (data.payload as any).createPlaylist
+              : false
+
+          // Handle Jellyfin authentication if password is provided
+          if (hasPassword) {
+            // Check if Jellyfin backend is enabled
+            if (BACKEND !== 'jellyfin') {
+              log.info(
+                'Login rejected: Jellyfin login attempted but backend is not jellyfin',
+              )
+              const response: WebSocketLoginResponseMessage = {
+                type: 'loginResponse',
+                payload: {
+                  success: false,
+                  reason: 'Jellyfin login is not available with this backend.',
+                },
+              }
+              ws.send(JSON.stringify(response))
+              return
             }
-            ws.send(JSON.stringify(response))
-            return
+
+            // Attempt Jellyfin authentication
+            // Use the input name for Jellyfin, not trimmed yet for auth
+            try {
+              jellyfinSession = await authenticateJellyfinUser(name, password)
+              // Use the Jellyfin-returned username for consistency
+              name = jellyfinSession.userName
+              jellyfinAuthenticated = true
+
+              // Validate the returned username
+              name = name.trim()
+              if (name.length === 0 || name.length > 50) {
+                log.warning(
+                  'Jellyfin returned username with invalid length, rejecting login',
+                )
+                const response: WebSocketLoginResponseMessage = {
+                  type: 'loginResponse',
+                  payload: {
+                    success: false,
+                    reason: 'Jellyfin login failed.',
+                  },
+                }
+                ws.send(JSON.stringify(response))
+                return
+              }
+            } catch (err) {
+              // Log error but not the password
+              log.error('Jellyfin authentication failed:', err)
+              const response: WebSocketLoginResponseMessage = {
+                type: 'loginResponse',
+                payload: {
+                  success: false,
+                  reason: 'Jellyfin login failed.',
+                },
+              }
+              ws.send(JSON.stringify(response))
+              return
+            }
+          } else {
+            // Non-Jellyfin login: validate name already checked above
+            if (name.length === 0) {
+              log.info('Login rejected: empty name')
+              const response: WebSocketLoginResponseMessage = {
+                type: 'loginResponse',
+                payload: {
+                  success: false,
+                  reason: 'Name cannot be empty.',
+                },
+              }
+              ws.send(JSON.stringify(response))
+              return
+            }
           }
 
-          log.info(`Got a login: roomCode=${roomCode}, name=${name}`)
+          log.info(
+            `Got a login: roomCode=${roomCode}, name=${name}, jellyfinAuth=${jellyfinAuthenticated}`,
+          )
 
           // Get active session (this also ensures room exists in database)
           const session = getSession(roomCode)
@@ -458,6 +649,13 @@ export const handleLogin = (ws: WebSocket): Promise<SessionUser> => {
 
           log.debug(`User ${name} (id=${user.id}) logged in`)
 
+          // Store Jellyfin session in WebSocket connection (memory only)
+          // Only enable playlist if authenticated AND createPlaylist is true
+          if (jellyfinSession && createPlaylist) {
+            ws.jellyfin = jellyfinSession
+            ws.playlistEnabled = true
+          }
+
           ws.removeListener('message', handler)
           session.addConnection(user.id, user.name, ws)
 
@@ -466,6 +664,8 @@ export const handleLogin = (ws: WebSocket): Promise<SessionUser> => {
             type: 'loginResponse',
             payload: {
               success: true,
+              jellyfinAuthenticated,
+              playlistEnabled: ws.playlistEnabled,
               matches: session.getExistingMatches(user.id),
               movies: session.movieListCache.filter(
                 movie => !userSwiped.has(movie.guid),
@@ -478,7 +678,9 @@ export const handleLogin = (ws: WebSocket): Promise<SessionUser> => {
         }
       } catch (err) {
         if (err instanceof SyntaxError) {
-          log.warning(`Invalid JSON in login handler: ${msg}`)
+          log.warning(
+            `Invalid JSON in login handler (length: ${msg.length} bytes)`,
+          )
           const response: WebSocketLoginResponseMessage = {
             type: 'loginResponse',
             payload: {

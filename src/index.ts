@@ -19,6 +19,7 @@ import {
   getRoomMatches,
   roomExists,
   initDatabase,
+  getUserLikes,
 } from './db/database.js'
 import { toCSV } from './util/csv.js'
 import { createRateLimiter, getClientIp } from './util/rateLimit.js'
@@ -162,6 +163,105 @@ const server = http.createServer(async (req, res) => {
         log.error(`Failed to load poster ${posterKey}:`, err)
         res.writeHead(404, { 'content-type': 'text/plain' })
         res.end('Not Found')
+      }
+    } else if (url.match(/^\/api\/rooms\/([0-9A-Za-z]+)\/likes\.csv/)) {
+      // User likes export endpoint
+      const match = url.match(/^\/api\/rooms\/([0-9A-Za-z]+)\/likes\.csv/)
+      if (!match) {
+        res.writeHead(404, { 'content-type': 'text/plain' })
+        res.end('Not Found')
+        return
+      }
+
+      let code = match[1].trim().toUpperCase()
+
+      // Validate room code format
+      if (!/^[0-9A-Z]{4}$/.test(code)) {
+        res.writeHead(404, { 'content-type': 'text/plain' })
+        res.end('Not Found')
+        return
+      }
+
+      // Check if room exists
+      if (!roomExists(code)) {
+        res.writeHead(404, { 'content-type': 'text/plain' })
+        res.end('Not Found')
+        return
+      }
+
+      // Parse query parameters
+      const [, searchPart] = url.split('?')
+      const searchParams = new URLSearchParams(searchPart || '')
+      let userName = searchParams.get('user')
+
+      // Validate user parameter
+      if (!userName) {
+        res.writeHead(404, { 'content-type': 'text/plain' })
+        res.end('Not Found')
+        return
+      }
+
+      // Decode URL-encoded user name
+      try {
+        userName = decodeURIComponent(userName)
+      } catch (err) {
+        res.writeHead(404, { 'content-type': 'text/plain' })
+        res.end('Not Found')
+        return
+      }
+
+      // Trim and check length
+      userName = userName.trim()
+      if (userName.length === 0 || userName.length > 50) {
+        res.writeHead(404, { 'content-type': 'text/plain' })
+        res.end('Not Found')
+        return
+      }
+
+      try {
+        const likes = getUserLikes(code, userName)
+
+        // Prepare CSV records
+        const records = []
+        for (const movie of likes) {
+          let deepLink = ''
+
+          try {
+            deepLink = await backend.getDeepLink(movie.key, 'http')
+          } catch (err) {
+            log.debug(`Failed to get deep link for ${movie.key}:`, err)
+          }
+
+          records.push({
+            Title: movie.title,
+            Year: movie.year,
+            Director: movie.director ?? '',
+            Rating: movie.rating,
+            Type: movie.type,
+            Link: deepLink,
+          })
+        }
+
+        const csv = toCSV(
+          ['Title', 'Year', 'Director', 'Rating', 'Type', 'Link'],
+          records,
+        )
+
+        // Sanitize file name: replace all characters except A-Za-z0-9-_ with _
+        const sanitizedName = userName.replace(/[^A-Za-z0-9\-_]/g, '_')
+
+        res.writeHead(200, {
+          'content-type': 'text/csv; charset=utf-8',
+          'content-disposition': `attachment; filename="moviematch-${code}-${sanitizedName}.csv"`,
+        })
+        res.end(csv)
+      } catch (err) {
+        log.error(
+          `Error generating likes CSV for room ${code}, user ${userName}:`,
+          err,
+        )
+        res.writeHead(500, { 'content-type': 'text/plain' })
+        res.end('Internal Server Error')
       }
     } else if (url.match(/^\/api\/rooms\/([0-9A-Za-z]+)\/matches\.csv$/)) {
       // CSV export endpoint

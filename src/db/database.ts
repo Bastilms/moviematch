@@ -400,38 +400,158 @@ export function roomExists(roomCode: string): boolean {
   return result !== undefined
 }
 
+/**
+ * Anzahl der Nutzer dieses Raums mit mindestens einem Swipe (Teilnehmer).
+ */
+export function getParticipantCount(roomCode: string): number {
+  const db = getDatabase()
+  const stmt = db.prepare(`
+    SELECT COUNT(DISTINCT u.id) as count FROM users u
+    JOIN swipes s ON s.user_id = u.id
+    WHERE u.room_code = ?
+  `)
+  const result = stmt.get(roomCode) as { count: number }
+  return result?.count ?? 0
+}
+
+/**
+ * Ist dieser Titel nach der aktuellen Regel ein Match?
+ * Ein Match erfordert, dass ALLE Teilnehmer des Raums diesen Titel
+ * positiv bewertet haben.
+ */
+export function isMatch(roomCode: string, mediaGuid: string): boolean {
+  const db = getDatabase()
+  const participantCount = getParticipantCount(roomCode)
+
+  if (participantCount === 0) {
+    return false
+  }
+
+  // Check if all participants rated this media positively
+  const stmt = db.prepare(`
+    SELECT
+      COUNT(DISTINCT CASE WHEN s.wants_to_watch = 1 THEN s.user_id END) as positive_count,
+      COUNT(DISTINCT CASE WHEN s.wants_to_watch = 0 THEN s.user_id END) as negative_count
+    FROM swipes s
+    WHERE s.media_guid = ?
+    AND s.user_id IN (
+      SELECT DISTINCT u.id FROM users u
+      JOIN swipes s2 ON s2.user_id = u.id
+      WHERE u.room_code = ?
+    )
+  `)
+
+  const result = stmt.get(mediaGuid, roomCode) as {
+    positive_count: number
+    negative_count: number
+  }
+
+  // A match if all participants rated it positively and nobody rated it negatively
+  return (
+    result.positive_count === participantCount && result.negative_count === 0
+  )
+}
+
+/**
+ * Guids aller Titel, die aktuell Matches sind.
+ */
+export function getRoomMatchGuids(roomCode: string): Set<string> {
+  const db = getDatabase()
+
+  const participantCount = getParticipantCount(roomCode)
+
+  if (participantCount === 0) {
+    return new Set()
+  }
+
+  // Find all media in the room that are matches
+  const stmt = db.prepare(`
+    SELECT m.guid
+    FROM media m
+    JOIN room_media rm ON m.guid = rm.media_guid
+    LEFT JOIN swipes s ON m.guid = s.media_guid
+    WHERE rm.room_code = ?
+    GROUP BY m.guid
+    HAVING
+      COUNT(DISTINCT CASE
+        WHEN s.wants_to_watch = 1
+        AND s.user_id IN (
+          SELECT DISTINCT u.id FROM users u
+          JOIN swipes s2 ON s2.user_id = u.id
+          WHERE u.room_code = ?
+        )
+        THEN s.user_id
+      END) = ?
+      AND COUNT(DISTINCT CASE
+        WHEN s.wants_to_watch = 0
+        AND s.user_id IN (
+          SELECT DISTINCT u.id FROM users u
+          JOIN swipes s2 ON s2.user_id = u.id
+          WHERE u.room_code = ?
+        )
+        THEN s.user_id
+      END) = 0
+    ORDER BY m.title ASC
+  `)
+
+  const rows = stmt.all(
+    roomCode,
+    roomCode,
+    participantCount,
+    roomCode,
+  ) as Array<{ guid: string }>
+
+  return new Set(rows.map(row => row.guid))
+}
+
 export function getRoomMatches(
   roomCode: string,
 ): Array<{ movie: MediaItem; users: string[] }> {
   const db = getDatabase()
 
-  // Get all media in this room with their likers
+  const participantCount = getParticipantCount(roomCode)
+
+  if (participantCount === 0) {
+    return []
+  }
+
+  // Find all media in the room that are matches
   const stmt = db.prepare(`
     SELECT
-      m.guid,
-      m.title,
-      m.summary,
-      m.year,
-      m.art,
-      m.director,
-      m.rating,
-      m.key,
-      m.type,
-      COUNT(DISTINCT s.user_id) as liker_count
+      m.guid, m.title, m.summary, m.year, m.art, m.director, m.rating, m.key, m.type
     FROM media m
     JOIN room_media rm ON m.guid = rm.media_guid
     LEFT JOIN swipes s ON m.guid = s.media_guid
-      AND s.user_id IN (SELECT id FROM users WHERE room_code = ?)
-      AND s.wants_to_watch = 1
     WHERE rm.room_code = ?
     GROUP BY m.guid
-    HAVING liker_count >= 2
-    ORDER BY liker_count DESC, m.title ASC
+    HAVING
+      COUNT(DISTINCT CASE
+        WHEN s.wants_to_watch = 1
+        AND s.user_id IN (
+          SELECT DISTINCT u.id FROM users u
+          JOIN swipes s2 ON s2.user_id = u.id
+          WHERE u.room_code = ?
+        )
+        THEN s.user_id
+      END) = ?
+      AND COUNT(DISTINCT CASE
+        WHEN s.wants_to_watch = 0
+        AND s.user_id IN (
+          SELECT DISTINCT u.id FROM users u
+          JOIN swipes s2 ON s2.user_id = u.id
+          WHERE u.room_code = ?
+        )
+        THEN s.user_id
+      END) = 0
+    ORDER BY m.title ASC
   `)
 
-  const rows = stmt.all(roomCode, roomCode) as Array<
-    Omit<MediaItem, 'director'> & { director: string | null }
-  >
+  const rows = stmt.all(
+    roomCode,
+    roomCode,
+    participantCount,
+    roomCode,
+  ) as Array<Omit<MediaItem, 'director'> & { director: string | null }>
 
   return rows.map(row => ({
     movie: {
@@ -447,4 +567,47 @@ export function getRoomMatches(
     },
     users: getLikersForMedia(roomCode, row.guid),
   }))
+}
+
+/**
+ * Alle Titel dieses Raums, die der genannte Nutzer positiv bewertet hat, nach Titel sortiert.
+ */
+export function getUserLikes(roomCode: string, userName: string): MediaItem[] {
+  const db = getDatabase()
+  const stmt = db.prepare(`
+    SELECT m.guid, m.title, m.summary, m.year, m.art, m.director, m.rating, m.key, m.type
+    FROM media m
+    JOIN room_media rm ON m.guid = rm.media_guid
+    JOIN users u ON u.room_code = rm.room_code
+    JOIN swipes s ON s.user_id = u.id AND s.media_guid = m.guid
+    WHERE u.room_code = ? AND u.name = ? AND s.wants_to_watch = 1
+    ORDER BY m.title ASC
+  `)
+
+  const rows = stmt.all(roomCode, userName) as Array<
+    Omit<MediaItem, 'director'> & { director: string | null }
+  >
+
+  return rows.map(row => ({
+    ...row,
+    director: row.director ?? undefined,
+  }))
+}
+
+/**
+ * Namen aller Teilnehmer dieses Raums (Nutzer mit mindestens einem Swipe),
+ * alphabetisch sortiert.
+ */
+export function getRoomParticipantNames(roomCode: string): string[] {
+  const db = getDatabase()
+  const stmt = db.prepare(`
+    SELECT DISTINCT u.name
+    FROM users u
+    JOIN swipes s ON s.user_id = u.id
+    WHERE u.room_code = ?
+    ORDER BY u.name ASC
+  `)
+
+  const rows = stmt.all(roomCode) as Array<{ name: string }>
+  return rows.map(row => row.name)
 }

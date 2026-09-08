@@ -2,6 +2,8 @@
   "LANG": "en",
   "LOGIN_NAME": "Name",
   "LOGIN_ROOM_CODE": "Room Code",
+  "LOGIN_PASSWORD": "Jellyfin password (optional)",
+  "LOGIN_CREATE_PLAYLIST": "Also save matches as a Jellyfin playlist",
   "LOGIN_SUBMIT": "Engage",
   "RATE_SECTION_LOADING": "Loading movies...",
   "RATE_SECTION_EXHAUSTED_CARDS": "That\\'s all folks ✌️",
@@ -12,5 +14,7 @@
   "MATCHES_SECTION_SHARE": "Share link",
   "MATCHES_SECTION_SHARE_COPIED": "Link copied!",
   "MATCHES_SECTION_EXPORT_CSV": "Export CSV",
-  "LIST_CONJUNCTION": "and"
+  "MATCHES_SECTION_EXPORT_LIKES": "Export my likes",
+  "LIST_CONJUNCTION": "and",
+  "CARD_NO_SUMMARY": "No description available."
 }

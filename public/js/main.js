@@ -133,9 +133,29 @@ export const login = async api => {
   const generateRoomCodeButton = document.querySelector(
     '.js-generate-room-code',
   )
+  const passwordLabel = document.querySelector('.js-password-label')
+  const passwordInput = document.querySelector('.js-password-input')
+  const playlistLabel = document.querySelector('.js-playlist-label')
+  const playlistCheckbox = document.querySelector('.js-playlist-checkbox')
   const roomCodeLine = document.querySelector('.js-room-code-line')
   const shareButton = document.querySelector('.js-share-button')
   const exportCsvLink = document.querySelector('.js-export-csv')
+  const exportLikesLink = document.querySelector('.js-export-likes')
+
+  // Show password field only if backend is Jellyfin
+  if (document.body.dataset.backend === 'jellyfin') {
+    passwordLabel?.removeAttribute('hidden')
+    passwordInput?.removeAttribute('hidden')
+    playlistLabel?.removeAttribute('hidden')
+  }
+
+  // Restore playlist checkbox state from localStorage
+  if (playlistCheckbox) {
+    const savedPlaylistState = localStorage.getItem('createPlaylist')
+    if (savedPlaylistState === 'true') {
+      playlistCheckbox.checked = true
+    }
+  }
 
   let user = localStorage.getItem('user')
   let roomCode = localStorage.getItem('roomCode')
@@ -157,6 +177,15 @@ export const login = async api => {
   if (roomCode) {
     loginForm.elements.roomCode.value = roomCode
   }
+
+  // Set up input handler to keep roomCode uppercase
+  const roomCodeInput = loginForm.elements.roomCode
+  roomCodeInput.addEventListener('input', e => {
+    const selStart = e.target.selectionStart
+    const selEnd = e.target.selectionEnd
+    e.target.value = e.target.value.toUpperCase()
+    e.target.setSelectionRange(selStart, selEnd)
+  })
 
   // Focus name field if room code came from URL and user is already set
   if (urlRoomCode && user) {
@@ -234,10 +263,21 @@ export const login = async api => {
       e.preventDefault()
       const formData = new FormData(loginForm)
       const name = formData.get('name')
-      const roomCode = formData.get('roomCode')
+      let roomCode = formData.get('roomCode')
+      const password = formData.get('password') || ''
+      const createPlaylist = formData.get('createPlaylist') === 'on'
+      roomCode = roomCode.toUpperCase()
       if (name && roomCode) {
         try {
-          const data = await api.login(name, roomCode)
+          // Only send createPlaylist if password is provided
+          const createPlaylistArg =
+            password && createPlaylist ? true : undefined
+          const data = await api.login(
+            name,
+            roomCode,
+            password || undefined,
+            createPlaylistArg,
+          )
           loginForm.removeEventListener('submit', handleSubmit)
 
           await loginSection.animate(
@@ -255,6 +295,18 @@ export const login = async api => {
           localStorage.setItem('user', name)
           localStorage.setItem('roomCode', roomCode)
 
+          // Save playlist checkbox state to localStorage
+          if (createPlaylist) {
+            localStorage.setItem('createPlaylist', 'true')
+          } else {
+            localStorage.removeItem('createPlaylist')
+          }
+
+          // Clear password field after successful login
+          if (passwordInput) {
+            passwordInput.value = ''
+          }
+
           roomCodeLine.dataset.roomCode = roomCode
 
           // Set CSV export link
@@ -263,6 +315,14 @@ export const login = async api => {
             exportCsvLink.href = `${basePath}/api/rooms/${encodeURIComponent(
               roomCode,
             )}/matches.csv`
+          }
+
+          // Set likes export link
+          if (exportLikesLink) {
+            const basePath = document.body.dataset.basePath || ''
+            exportLikesLink.href = `${basePath}/api/rooms/${encodeURIComponent(
+              roomCode,
+            )}/likes.csv?user=${encodeURIComponent(name)}`
           }
 
           document.body.scrollIntoView()

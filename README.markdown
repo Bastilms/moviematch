@@ -183,3 +183,9 @@ Yes, you can read some documentation [here](./docs/reverse-proxy.markdown)
 **MovieMatch does not include authentication.** Anyone with access to the room code (or who can guess the CSV export endpoint) can view the matches and ratings for that room.
 
 Do **not** expose an unprotected MovieMatch instance to the public internet. Use a reverse proxy with authentication, a firewall, or run it on a private network only.
+
+### Jellyfin User Authentication
+
+MovieMatch supports optional authentication with a Jellyfin user account. When this feature is used, the user's password is transmitted from the browser to the MovieMatch server and then to the Jellyfin server. On unsecured connections (plain HTTP), the password travels in cleartext and can be intercepted — **HTTPS is strongly recommended** for this feature.
+
+MovieMatch does not store passwords or persist Jellyfin credentials. The access token returned by Jellyfin is kept only in server memory for the duration of the connection and is not saved to disk or the database.
