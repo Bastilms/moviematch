@@ -49,9 +49,15 @@ body {
   text-rendering: optimizespeed;
   line-height: 1.5;
   background-color: var(--ink);
-  background-image: url('assets/background-grain.png');
-  background-size: auto;
-  background-repeat: repeat;
+
+  /* Das Filmkorn stammt aus dem frueheren hellen Design: fast weiss, 50% Alpha.
+     Unveraendert ueber der dunklen Flaeche ergaebe es einen mittelgrauen Grund
+     (#7a797b) und damit unlesbaren Text. Der Ink-Schleier daempft es auf 8%. */
+  background-image:
+    linear-gradient(rgb(18 17 31 / 92%), rgb(18 17 31 / 92%)),
+    url('assets/background-grain.png');
+  background-size: auto, auto;
+  background-repeat: repeat, repeat;
   color: var(--bone);
 }
 
