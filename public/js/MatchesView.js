@@ -1,5 +1,3 @@
-// deno-lint-ignore-file
-
 export class MatchesView {
   constructor(matches = []) {
     this.matches = matches
@@ -11,7 +9,7 @@ export class MatchesView {
 
   add(match) {
     const existingIndex = this.matches.findIndex(
-      _ => _.movie.guid === match.movie.guid
+      _ => _.movie.guid === match.movie.guid,
     )
 
     if (existingIndex !== -1) {
@@ -26,11 +24,19 @@ export class MatchesView {
         duration: 300,
         easing: 'ease-in-out',
         fill: 'both',
-      }
+      },
     )
 
     this.matches.push(match)
     this.render()
+  }
+
+  remove(guid) {
+    const index = this.matches.findIndex(_ => _.movie.guid === guid)
+    if (index !== -1) {
+      this.matches.splice(index, 1)
+      this.render()
+    }
   }
 
   formatList = users => {
@@ -57,7 +63,7 @@ export class MatchesView {
       const a = document.createElement('a')
       a.classList.add('card')
       a.href = `${document.body.dataset.basePath}/movie/${encodeURIComponent(
-        movie.key
+        movie.key,
       )}`
       a.target = this.node.dataset.targetType
 

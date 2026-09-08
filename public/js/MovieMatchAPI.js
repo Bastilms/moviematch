@@ -1,5 +1,3 @@
-// deno-lint-ignore-file
-
 export class MovieMatchAPI extends EventTarget {
   constructor() {
     super()
@@ -8,7 +6,7 @@ export class MovieMatchAPI extends EventTarget {
     this.socket = new WebSocket(
       `${location.protocol === 'https:' ? 'wss' : 'ws'}://${
         location.host
-      }${basePath}/ws`
+      }${basePath}/ws`,
     )
 
     this.socket.addEventListener('message', e => this.handleMessage(e))
@@ -28,7 +26,7 @@ export class MovieMatchAPI extends EventTarget {
           name: user,
           roomCode,
         },
-      })
+      }),
     )
 
     return new Promise((resolve, reject) => {
@@ -42,7 +40,7 @@ export class MovieMatchAPI extends EventTarget {
             reject(new Error(reason))
           }
         },
-        { once: true }
+        { once: true },
       )
     })
   }
@@ -58,14 +56,26 @@ export class MovieMatchAPI extends EventTarget {
       }
       case 'match': {
         return this.dispatchEvent(
-          new MessageEvent('match', { data: data.payload })
+          new MessageEvent('match', { data: data.payload }),
         )
       }
       case 'loginResponse': {
         this._movieList = data.payload.movies ?? []
         this.dispatchEvent(
-          new MessageEvent('loginResponse', { data: data.payload })
+          new MessageEvent('loginResponse', { data: data.payload }),
         )
+      }
+      case 'undoResponse': {
+        this.dispatchEvent(
+          new MessageEvent('undoResponse', { data: data.payload }),
+        )
+        break
+      }
+      case 'matchRemoved': {
+        this.dispatchEvent(
+          new MessageEvent('matchRemoved', { data: data.payload }),
+        )
+        break
       }
     }
   }
@@ -78,24 +88,32 @@ export class MovieMatchAPI extends EventTarget {
           guid,
           wantsToWatch,
         },
-      })
+      }),
     )
   }
 
   async requestNextBatch() {
     if (this.socket.readyState !== WebSocket.OPEN) {
       await new Promise(resolve =>
-        this.socket.addEventListener('open', resolve, { once: true })
+        this.socket.addEventListener('open', resolve, { once: true }),
       )
     }
 
     this.socket.send(
       JSON.stringify({
         type: 'nextBatch',
-      })
+      }),
     )
     return new Promise(resolve =>
-      this.addEventListener('batch', e => resolve(e.data), { once: true })
+      this.addEventListener('batch', e => resolve(e.data), { once: true }),
+    )
+  }
+
+  undo() {
+    this.socket.send(
+      JSON.stringify({
+        type: 'undo',
+      }),
     )
   }
 

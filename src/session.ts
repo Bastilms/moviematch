@@ -14,6 +14,7 @@ import {
   getUserLikedGuids,
   getLikersForMedia,
   getRoomMatches,
+  deleteLastSwipe,
 } from './db/database.js'
 
 interface Response {
@@ -57,10 +58,15 @@ interface WebSocketNextBatchMessage {
   type: 'nextBatch'
 }
 
+interface WebSocketUndoMessage {
+  type: 'undo'
+}
+
 type WebSocketMessage =
   | WebSocketLoginMessage
   | WebSocketResponseMessage
   | WebSocketNextBatchMessage
+  | WebSocketUndoMessage
 
 interface SessionUser {
   id: number
@@ -89,7 +95,7 @@ class Session {
 
     if (this.userConnections.size === 0) {
       log.debug(
-        `Session ${this.roomCode} has no active connections, removing from active sessions (data persists in database)`
+        `Session ${this.roomCode} has no active connections, removing from active sessions (data persists in database)`,
       )
       activeSessions.delete(this.roomCode)
     }
@@ -116,7 +122,7 @@ class Session {
           // Validate guid belongs to this room
           if (!this.movieListCache.find(m => m.guid === guid)) {
             log.error(
-              `${name} tried to rate a movie that doesn't exist in room: ${guid}`
+              `${name} tried to rate a movie that doesn't exist in room: ${guid}`,
             )
             return
           }
@@ -125,7 +131,7 @@ class Session {
           const userSwiped = getUserSwipedGuids(userId)
           if (userSwiped.has(guid)) {
             log.warning(
-              `User ${name} tried to respond to ${guid} twice! Ignoring.`
+              `User ${name} tried to respond to ${guid} twice! Ignoring.`,
             )
             return
           }
@@ -133,7 +139,7 @@ class Session {
           log.debug(
             `${name} ${
               wantsToWatch ? 'wants to watch' : 'does not want to watch'
-            } ${guid}`
+            } ${guid}`,
           )
 
           const isNew = recordSwipe(userId, guid, wantsToWatch)
@@ -150,6 +156,67 @@ class Session {
                 this.broadcastMatch(movie, likers)
               }
             }
+          }
+          break
+        }
+        case 'undo': {
+          log.debug(`${name} is trying to undo their last swipe`)
+
+          const result = deleteLastSwipe(userId)
+          if (!result) {
+            log.debug(`${name} has no swipes to undo`)
+            const ws = this.userConnections.get(userId)
+            if (ws && !ws.isClosed) {
+              ws.send(
+                JSON.stringify({
+                  type: 'undoResponse',
+                  payload: {
+                    success: false,
+                  },
+                }),
+              )
+            }
+            break
+          }
+
+          const { guid, wantsToWatch } = result
+          log.debug(`Deleted swipe for ${name}: ${guid}`)
+
+          // Check if this was a match-removing action
+          if (wantsToWatch) {
+            const likersAfter = getLikersForMedia(this.roomCode, guid)
+            if (likersAfter.length < 2) {
+              log.debug(
+                `Match removed for ${guid} after undo (was positive, now has ${likersAfter.length} likers)`,
+              )
+              // Broadcast matchRemoved to all connections
+              for (const ws of this.userConnections.values()) {
+                if (!ws.isClosed) {
+                  ws.send(
+                    JSON.stringify({
+                      type: 'matchRemoved',
+                      payload: {
+                        guid,
+                      },
+                    }),
+                  )
+                }
+              }
+            }
+          }
+
+          // Send undoResponse to the requester
+          const ws = this.userConnections.get(userId)
+          if (ws && !ws.isClosed) {
+            ws.send(
+              JSON.stringify({
+                type: 'undoResponse',
+                payload: {
+                  success: true,
+                  guid,
+                },
+              }),
+            )
           }
           break
         }
@@ -174,7 +241,7 @@ class Session {
 
       // Filter to undistributed
       const candidates = allMediaItems.filter(
-        item => !distributedGuids.has(item.guid)
+        item => !distributedGuids.has(item.guid),
       )
 
       if (candidates.length === 0) {
@@ -185,7 +252,7 @@ class Session {
               JSON.stringify({
                 type: 'batch',
                 payload: [],
-              })
+              }),
             )
           }
         }
@@ -219,13 +286,13 @@ class Session {
         if (!ws.isClosed) {
           const userSwiped = getUserSwipedGuids(connectedUserId)
           const filteredBatch = batch.filter(
-            movie => !userSwiped.has(movie.guid)
+            movie => !userSwiped.has(movie.guid),
           )
           ws.send(
             JSON.stringify({
               type: 'batch',
               payload: filteredBatch,
-            })
+            }),
           )
         }
       }
@@ -284,7 +351,7 @@ export const getSession = (roomCode: string): Session => {
   log.debug(
     `New session created. Active session ids are: ${[
       ...activeSessions.keys(),
-    ].join(', ')}`
+    ].join(', ')}`,
   )
 
   return session
@@ -323,7 +390,7 @@ export const handleLogin = (ws: WebSocket): Promise<SessionUser> => {
           // Validate roomCode format
           if (!/^[0-9A-Z]{4}$/.test(roomCode)) {
             log.info(
-              `Login rejected: invalid room code format: ${data.payload.roomCode}`
+              `Login rejected: invalid room code format: ${data.payload.roomCode}`,
             )
             const response: WebSocketLoginResponseMessage = {
               type: 'loginResponse',
@@ -401,7 +468,7 @@ export const handleLogin = (ws: WebSocket): Promise<SessionUser> => {
               success: true,
               matches: session.getExistingMatches(user.id),
               movies: session.movieListCache.filter(
-                movie => !userSwiped.has(movie.guid)
+                movie => !userSwiped.has(movie.guid),
               ),
             },
           }

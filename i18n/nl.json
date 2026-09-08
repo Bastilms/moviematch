@@ -5,6 +5,7 @@
   "LOGIN_SUBMIT": "Inloggen",
   "RATE_SECTION_LOADING": "Films laden...",
   "RATE_SECTION_EXHAUSTED_CARDS": "We hebben het einde van de rit bereikt 🎢. Let op je hoofd op de weg naar buiten.",
+  "RATE_SECTION_UNDO": "Ongedaan maken",
   "MATCHES_SECTION_TITLE": "Matches",
   "MATCHES_SECTION_NO_MATCHES": "Nog geen matches... heb je geprobeerd minder critisch te zijn?",
   "MATCHES_SECTION_CARD_LIKERS": "$USERS willen $MOVIE kijken",

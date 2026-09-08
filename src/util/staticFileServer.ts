@@ -24,7 +24,7 @@ function normalizeURL(url: string): string {
 export async function serveFile(
   url: string,
   res: ServerResponse,
-  headers: Record<string, string | string[] | undefined>
+  headers: Record<string, string | string[] | undefined>,
 ): Promise<void> {
   // Resolve base directory relative to this module
   const baseDir = join(
@@ -32,12 +32,12 @@ export async function serveFile(
     '..',
     '..',
     '..',
-    'public'
+    'public',
   )
 
   const normalizedPath = join(
     baseDir,
-    url === '/' ? '/index.html' : normalizeURL(url)
+    url === '/' ? '/index.html' : normalizeURL(url),
   )
 
   log.debug(`serveFile(${normalizedPath})`)

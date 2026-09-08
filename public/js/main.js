@@ -1,5 +1,3 @@
-// deno-lint-ignore-file
-
 import { MovieMatchAPI } from './MovieMatchAPI.js'
 import { CardView } from './CardView.js'
 import { MatchesView } from './MatchesView.js'
@@ -14,9 +12,47 @@ const main = async () => {
   let matchesView = new MatchesView(matches)
   let topCardEl
 
+  // Undo history stack (stores movie objects that have been rated)
+  const swipeHistory = []
+
   api.addEventListener('match', e => matchesView.add(e.data))
+  api.addEventListener('undoResponse', e => {
+    if (e.data.success && swipeHistory.length > 0) {
+      const movie = swipeHistory.pop()
+      // Restore the card to the beginning of the stack
+      new CardView(movie, cardStackEventTarget, true)
+      topCardEl = document.querySelector('.js-card-stack > :first-child')
+
+      // Re-enable rate controls if they were disabled
+      const cardStackEl = document.querySelector('.js-card-stack')
+      if (cardStackEl && rateControls.hasAttribute('disabled')) {
+        rateControls.removeAttribute('disabled')
+        cardStackEl.style.setProperty('--empty-text', `var(--i18n-loading)`)
+      }
+
+      updateUndoButtonState()
+    }
+  })
+  api.addEventListener('matchRemoved', e => {
+    matchesView.remove(e.data.guid)
+  })
 
   const rateControls = document.querySelector('.rate-controls')
+  const undoButton = document.querySelector('.js-undo-button')
+
+  const updateUndoButtonState = () => {
+    if (undoButton) {
+      if (swipeHistory.length > 0) {
+        undoButton.removeAttribute('disabled')
+      } else {
+        undoButton.setAttribute('disabled', '')
+      }
+    }
+  }
+
+  undoButton?.addEventListener('click', () => {
+    api.undo()
+  })
 
   rateControls.addEventListener('click', e => {
     let wantsToWatch
@@ -47,6 +83,12 @@ const main = async () => {
   const cardStackEventTarget = new EventTarget()
 
   cardStackEventTarget.addEventListener('newTopCard', () => {
+    // Store the rated card in history before moving to the next card
+    if (topCardEl && topCardEl.movieData) {
+      swipeHistory.push(topCardEl.movieData)
+      updateUndoButtonState()
+    }
+
     topCardEl = topCardEl.nextSibling
 
     if (!topCardEl) {
@@ -55,7 +97,7 @@ const main = async () => {
       if (cardStackEl) {
         cardStackEl.style.setProperty(
           '--empty-text',
-          `var(--i18n-exhausted-cards)`
+          `var(--i18n-exhausted-cards)`,
         )
       }
 
@@ -73,7 +115,7 @@ const main = async () => {
           },
           {
             once: true,
-          }
+          },
         )
       })
       api.respond(response)
@@ -89,7 +131,7 @@ export const login = async api => {
   const loginSection = document.querySelector('.login-section')
   const loginForm = document.querySelector('.js-login-form')
   const generateRoomCodeButton = document.querySelector(
-    '.js-generate-room-code'
+    '.js-generate-room-code',
   )
   const roomCodeLine = document.querySelector('.js-room-code-line')
   const shareButton = document.querySelector('.js-share-button')
@@ -206,7 +248,7 @@ export const login = async api => {
               duration: 250,
               easing: 'ease-in-out',
               fill: 'both',
-            }
+            },
           ).finished
 
           loginSection.hidden = true
@@ -219,7 +261,7 @@ export const login = async api => {
           if (exportCsvLink) {
             const basePath = document.body.dataset.basePath || ''
             exportCsvLink.href = `${basePath}/api/rooms/${encodeURIComponent(
-              roomCode
+              roomCode,
             )}/matches.csv`
           }
 
@@ -238,9 +280,9 @@ export const login = async api => {
                   duration: 250,
                   easing: 'ease-in-out',
                   fill: 'both',
-                }
+                },
               ).finished
-            })
+            }),
           )
 
           resolve({ ...data, user: name })

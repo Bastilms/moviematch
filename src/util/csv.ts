@@ -40,7 +40,7 @@ function escapeCSVField(value: string): string {
  */
 export function toCSV(
   headers: string[],
-  records: Array<Record<string, string>>
+  records: Array<Record<string, string>>,
 ): string {
   const lines: string[] = []
 

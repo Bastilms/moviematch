@@ -31,7 +31,7 @@ export class WebSocketServer {
   async handleUpgrade(
     request: IncomingMessage,
     socket: Duplex,
-    head: Buffer
+    head: Buffer,
   ): Promise<void> {
     try {
       this.wss.handleUpgrade(request, socket, head, (ws: WSWebSocket) => {
@@ -43,7 +43,7 @@ export class WebSocketServer {
         // Extract and store the client IP
         webSocket.remoteAddress = getClientIp(
           request,
-          this.options.trustProxy ?? false
+          this.options.trustProxy ?? false,
         )
         // Attach the message rate limiter function
         webSocket._messageRateLimiter = this.messageRateLimiterFn

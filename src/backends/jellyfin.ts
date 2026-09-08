@@ -35,12 +35,13 @@ function truncateResponseText(text: string, maxLength: number = 500): string {
 }
 
 // Validates Jellyfin user/item IDs: 32-char hex or GUID with hyphens
-const JELLYFIN_ID_REGEX = /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i
+const JELLYFIN_ID_REGEX =
+  /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i
 
 function validateJellyfinId(id: string, context: string): void {
   if (!JELLYFIN_ID_REGEX.test(id)) {
     throw new Error(
-      `Invalid Jellyfin ID format (${context}): ${id}. Expected a 32-character hex string or GUID (e.g., "aabbccddeeff00112233445566778899" or "12345678-1234-5678-1234-567812345678").`
+      `Invalid Jellyfin ID format (${context}): ${id}. Expected a 32-character hex string or GUID (e.g., "aabbccddeeff00112233445566778899" or "12345678-1234-5678-1234-567812345678").`,
     )
   }
 }
@@ -79,12 +80,12 @@ export class JellyfinBackend implements MediaBackend {
 
   private async fetchAuthenticated(
     url: string,
-    options?: RequestInit
+    options?: RequestInit,
   ): Promise<Response> {
     const headers = new Headers(options?.headers ?? {})
     headers.set(
       'Authorization',
-      `MediaBrowser Token="${JELLYFIN_API_KEY}", Client="MovieMatch", Device="MovieMatch", DeviceId="moviematch", Version="${getVersion()}"`
+      `MediaBrowser Token="${JELLYFIN_API_KEY}", Client="MovieMatch", Device="MovieMatch", DeviceId="moviematch", Version="${getVersion()}"`,
     )
     headers.set('accept', 'application/json')
 
@@ -106,7 +107,7 @@ export class JellyfinBackend implements MediaBackend {
     if (JELLYFIN_USER_ID) {
       validateJellyfinId(
         JELLYFIN_USER_ID,
-        'JELLYFIN_USER_ID environment variable'
+        'JELLYFIN_USER_ID environment variable',
       )
       this.userId = JELLYFIN_USER_ID
       return this.userId
@@ -122,8 +123,8 @@ export class JellyfinBackend implements MediaBackend {
         const responseText = await response.text()
         throw new Error(
           `${response.url} returned ${response.status}: ${truncateResponseText(
-            responseText
-          )}`
+            responseText,
+          )}`,
         )
       }
     }
@@ -151,8 +152,8 @@ export class JellyfinBackend implements MediaBackend {
         const responseText = await response.text()
         throw new Error(
           `${response.url} returned ${response.status}: ${truncateResponseText(
-            responseText
-          )}`
+            responseText,
+          )}`,
         )
       }
     }
@@ -175,8 +176,8 @@ export class JellyfinBackend implements MediaBackend {
         const responseText = await response.text()
         throw new Error(
           `${response.url} returned ${response.status}: ${truncateResponseText(
-            responseText
-          )}`
+            responseText,
+          )}`,
         )
       }
     }
@@ -185,7 +186,7 @@ export class JellyfinBackend implements MediaBackend {
 
     if (!Array.isArray(data.Items)) {
       throw new Error(
-        `Unexpected response from ${response.url}: expected an "Items" array`
+        `Unexpected response from ${response.url}: expected an "Items" array`,
       )
     }
 
@@ -209,7 +210,7 @@ export class JellyfinBackend implements MediaBackend {
       const targetCollectionType =
         collectionTypeMap[DEFAULT_SECTION_TYPE_FILTER]
       const defaultView = allViews.find(
-        v => v.CollectionType === targetCollectionType
+        v => v.CollectionType === targetCollectionType,
       )
 
       if (defaultView) {
@@ -224,8 +225,8 @@ export class JellyfinBackend implements MediaBackend {
     ok(
       selectedViews.length !== 0,
       `${LIBRARY_FILTER} did not match any available library names: ${availableViewNames.join(
-        ', '
-      )}`
+        ', ',
+      )}`,
     )
 
     return selectedViews
@@ -254,7 +255,7 @@ export class JellyfinBackend implements MediaBackend {
       const items = await this.loadItemsFromView(
         userId,
         view.Id,
-        includeItemTypes
+        includeItemTypes,
       )
 
       log.debug(`Loaded ${items.length} items from ${view.Name}`)
@@ -275,7 +276,7 @@ export class JellyfinBackend implements MediaBackend {
 
       if (!item.ImageTags?.Primary) {
         log.debug(
-          `Item ${item.Name} (id: ${item.Id}) has no Primary image, skipping`
+          `Item ${item.Name} (id: ${item.Id}) has no Primary image, skipping`,
         )
         continue
       }
@@ -299,7 +300,7 @@ export class JellyfinBackend implements MediaBackend {
   private async loadItemsFromView(
     userId: string,
     viewId: string,
-    includeItemTypes?: string
+    includeItemTypes?: string,
   ): Promise<JellyfinItem[]> {
     const allItems: JellyfinItem[] = []
     let startIndex = 0
@@ -329,7 +330,7 @@ export class JellyfinBackend implements MediaBackend {
           throw new Error(
             `${response.url} returned ${
               response.status
-            }: ${truncateResponseText(responseText)}`
+            }: ${truncateResponseText(responseText)}`,
           )
         }
       }
@@ -341,7 +342,7 @@ export class JellyfinBackend implements MediaBackend {
 
       if (!Array.isArray(data.Items)) {
         throw new Error(
-          `Unexpected response from ${response.url}: expected an "Items" array`
+          `Unexpected response from ${response.url}: expected an "Items" array`,
         )
       }
 
@@ -354,7 +355,7 @@ export class JellyfinBackend implements MediaBackend {
             : null
         if (totalRecordCount !== null && allItems.length < totalRecordCount) {
           log.warning(
-            `Jellyfin /Items stopped returning items early (viewId: ${viewId}). Loaded ${allItems.length} of ${totalRecordCount} expected items.`
+            `Jellyfin /Items stopped returning items early (viewId: ${viewId}). Loaded ${allItems.length} of ${totalRecordCount} expected items.`,
           )
         }
         break
@@ -383,10 +384,10 @@ export class JellyfinBackend implements MediaBackend {
 
   private async filterByCollections(
     userId: string,
-    items: JellyfinItem[]
+    items: JellyfinItem[],
   ): Promise<JellyfinItem[]> {
     const filterNames = COLLECTION_FILTER.split(',').map(n =>
-      n.trim().toLowerCase()
+      n.trim().toLowerCase(),
     )
 
     // Load BoxSets
@@ -404,8 +405,8 @@ export class JellyfinBackend implements MediaBackend {
         const responseText = await response.text()
         throw new Error(
           `${response.url} returned ${response.status}: ${truncateResponseText(
-            responseText
-          )}`
+            responseText,
+          )}`,
         )
       }
     }
@@ -414,12 +415,12 @@ export class JellyfinBackend implements MediaBackend {
 
     if (!Array.isArray(data.Items)) {
       throw new Error(
-        `Unexpected response from ${response.url}: expected an "Items" array`
+        `Unexpected response from ${response.url}: expected an "Items" array`,
       )
     }
 
     const boxSets = data.Items.filter(bs =>
-      filterNames.includes(bs.Name.toLowerCase().trim())
+      filterNames.includes(bs.Name.toLowerCase().trim()),
     )
 
     // For each matching BoxSet, load its items and collect their IDs
@@ -435,14 +436,14 @@ export class JellyfinBackend implements MediaBackend {
       if (!boxSetResponse.ok) {
         if (boxSetResponse.status === 401) {
           throw new JellyfinAuthError(
-            `Authentication error: ${boxSetResponse.url}`
+            `Authentication error: ${boxSetResponse.url}`,
           )
         } else {
           const responseText = await boxSetResponse.text()
           throw new Error(
             `${boxSetResponse.url} returned ${
               boxSetResponse.status
-            }: ${truncateResponseText(responseText)}`
+            }: ${truncateResponseText(responseText)}`,
           )
         }
       }
@@ -451,7 +452,7 @@ export class JellyfinBackend implements MediaBackend {
 
       if (!Array.isArray(boxSetData.Items)) {
         throw new Error(
-          `Unexpected response from ${boxSetResponse.url}: expected an "Items" array`
+          `Unexpected response from ${boxSetResponse.url}: expected an "Items" array`,
         )
       }
 
@@ -482,8 +483,8 @@ export class JellyfinBackend implements MediaBackend {
         const responseText = await response.text()
         throw new Error(
           `${response.url} returned ${response.status}: ${truncateResponseText(
-            responseText
-          )}`
+            responseText,
+          )}`,
         )
       }
     }
@@ -503,7 +504,7 @@ export class JellyfinBackend implements MediaBackend {
     // Jellyfin doesn't have app deep links, always return web link
     // (linkType parameter is intentionally unused)
     return `${JELLYFIN_URL}/web/index.html#/details?id=${encodeURIComponent(
-      key
+      key,
     )}&serverId=${serverId}`
   }
 }

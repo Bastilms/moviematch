@@ -27,7 +27,7 @@ async function populateTranslations(): Promise<void> {
   for (const translationPath of translationPaths) {
     try {
       const translation = JSON.parse(
-        await readFile(translationPath, 'utf-8')
+        await readFile(translationPath, 'utf-8'),
       ) as Record<string, string>
       if (typeof translation.LANG === 'string') {
         translations.set(translation.LANG, translation)
@@ -90,7 +90,7 @@ function selectLanguage(acceptLanguage: string | undefined): string {
 }
 
 export function getLinkTypeForRequest(
-  headers: Record<string, string | string[] | undefined>
+  headers: Record<string, string | string[] | undefined>,
 ): 'app' | 'http' {
   const ua = headers['user-agent']
   const userAgent =
@@ -106,7 +106,7 @@ export function getLinkTypeForRequest(
 
 export async function translateHTML(
   html: Buffer | string,
-  headers: Record<string, string | string[] | undefined>
+  headers: Record<string, string | string[] | undefined>,
 ): Promise<string> {
   if (translations.size === 0) {
     try {
@@ -121,8 +121,8 @@ export async function translateHTML(
     typeof acceptLanguage === 'string'
       ? acceptLanguage
       : Array.isArray(acceptLanguage)
-      ? acceptLanguage[0]
-      : undefined
+        ? acceptLanguage[0]
+        : undefined
 
   const language = selectLanguage(acceptLanguageStr)
 

@@ -60,17 +60,17 @@ export const RATE_LIMIT_ENABLED =
 
 export const RATE_LIMIT_HTTP_PER_MINUTE = parseRateLimitConfig(
   'RATE_LIMIT_HTTP_PER_MINUTE',
-  300
+  300,
 )
 
 export const RATE_LIMIT_WS_PER_MINUTE = parseRateLimitConfig(
   'RATE_LIMIT_WS_PER_MINUTE',
-  20
+  20,
 )
 
 export const RATE_LIMIT_MESSAGES_PER_MINUTE = parseRateLimitConfig(
   'RATE_LIMIT_MESSAGES_PER_MINUTE',
-  300
+  300,
 )
 
 export const TRUST_PROXY =
@@ -88,7 +88,7 @@ export function getVersion(): string {
       fileURLToPath(import.meta.url),
       '..',
       '..',
-      'package.json'
+      'package.json',
     )
     const pkgText = readFileSync(pkgPath, 'utf-8')
     const pkg: { version: string } = JSON.parse(pkgText)

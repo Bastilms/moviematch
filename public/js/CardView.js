@@ -1,24 +1,23 @@
-// deno-lint-ignore-file
-
 const cardList = document.querySelector('.js-card-stack')
 
 export class CardView {
-  constructor(movieData, eventTarget) {
+  constructor(movieData, eventTarget, insertAtBeginning = false) {
     this.movieData = movieData
     this.eventTarget = eventTarget
     this.animationDuration = 500
     this.basePath = document.body.dataset.basePath
-    this.render()
+    this.render(insertAtBeginning)
   }
 
-  render() {
+  render(insertAtBeginning = false) {
     const node = document.createElement('div')
     this.node = node
     node.classList.add('card')
+    node.movieData = this.movieData
     node.addEventListener('pointerdown', this.handleSwipe)
     node.addEventListener('touchstart', e => e.preventDefault())
     node.addEventListener('rate', e =>
-      this.rate(e.data, this.getAnimation(e.data ? 'right' : 'left'))
+      this.rate(e.data, this.getAnimation(e.data ? 'right' : 'left')),
     )
 
     const { title, type, art, year, guid } = this.movieData
@@ -48,7 +47,11 @@ export class CardView {
     }
     node.appendChild(p)
 
-    cardList.appendChild(node)
+    if (insertAtBeginning && cardList.firstChild) {
+      cardList.insertBefore(node, cardList.firstChild)
+    } else {
+      cardList.appendChild(node)
+    }
   }
 
   async rate(wantsToWatch, animation) {
@@ -70,7 +73,7 @@ export class CardView {
           guid: this.movieData.guid,
           wantsToWatch,
         },
-      })
+      }),
     )
     this.destroy()
   }
@@ -90,7 +93,7 @@ export class CardView {
     let currentDirection
     let position = 0
     this.animationFrameRequestId = requestAnimationFrame(() =>
-      this.animationLoop()
+      this.animationLoop(),
     )
 
     const handleMove = e => {
@@ -132,7 +135,7 @@ export class CardView {
           currentDirection = null
         }
       },
-      { once: true }
+      { once: true },
     )
   }
 
@@ -141,7 +144,7 @@ export class CardView {
       this.animation.currentTime = this.currentTime
     }
     this.animationFrameRequestId = requestAnimationFrame(() =>
-      this.animationLoop()
+      this.animationLoop(),
     )
   }
 
@@ -158,7 +161,7 @@ export class CardView {
         duration: this.animationDuration,
         easing: 'ease-in-out',
         fill: 'both',
-      }
+      },
     )
   }
 

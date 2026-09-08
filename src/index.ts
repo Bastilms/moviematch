@@ -226,7 +226,7 @@ const server = http.createServer(async (req, res) => {
             'Users',
             'Link',
           ],
-          records
+          records,
         )
 
         res.writeHead(200, {
@@ -244,7 +244,7 @@ const server = http.createServer(async (req, res) => {
       await serveFile(
         url,
         res,
-        req.headers as Record<string, string | string[] | undefined>
+        req.headers as Record<string, string | string[] | undefined>,
       )
     }
   } catch (err) {

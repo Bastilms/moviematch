@@ -56,7 +56,7 @@ export class PlexBackend implements MediaBackend {
     ok(typeof PLEX_TOKEN === 'string', 'A PLEX_TOKEN is required')
     ok(
       !PLEX_TOKEN.startsWith('claim-'),
-      'Your PLEX_TOKEN does not look right. Please see: https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/'
+      'Your PLEX_TOKEN does not look right. Please see: https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/',
     )
   }
 
@@ -87,7 +87,7 @@ export class PlexBackend implements MediaBackend {
       `${PLEX_URL}/library/sections?X-Plex-Token=${PLEX_TOKEN}`,
       {
         headers: { accept: 'application/json' },
-      }
+      },
     )
 
     if (req.ok) {
@@ -100,15 +100,16 @@ export class PlexBackend implements MediaBackend {
   }
 
   private getSelectedLibraryTitles(
-    sections: PlexMediaContainer<PlexDirectory>
+    sections: PlexMediaContainer<PlexDirectory>,
   ): string[] {
     const availableLibraryNames = sections.MediaContainer.Directory.map(
-      _ => _.title
+      _ => _.title,
     )
     log.debug(`Available libraries: ${availableLibraryNames.join(', ')}`)
 
     const defaultLibraryName = sections.MediaContainer.Directory.find(
-      ({ hidden, type }) => hidden !== 1 && type === DEFAULT_SECTION_TYPE_FILTER
+      ({ hidden, type }) =>
+        hidden !== 1 && type === DEFAULT_SECTION_TYPE_FILTER,
     )?.title
 
     const libraryTitles =
@@ -119,8 +120,8 @@ export class PlexBackend implements MediaBackend {
     ok(
       libraryTitles.length !== 0,
       `${LIBRARY_FILTER} did not match any available library names: ${availableLibraryNames.join(
-        ', '
-      )}`
+        ', ',
+      )}`,
     )
 
     return libraryTitles
@@ -135,7 +136,7 @@ export class PlexBackend implements MediaBackend {
 
     const movieSections = sections.MediaContainer.Directory.filter(
       ({ title, hidden }) =>
-        hidden !== 1 && selectedLibraryTitles.includes(title)
+        hidden !== 1 && selectedLibraryTitles.includes(title),
     )
 
     ok(movieSections.length !== 0, `Couldn't find a movies section in Plex!`)
@@ -149,24 +150,24 @@ export class PlexBackend implements MediaBackend {
         `${PLEX_URL}/library/sections/${movieSection.key}/all?X-Plex-Token=${PLEX_TOKEN}`,
         {
           headers: { accept: 'application/json' },
-        }
+        },
       )
 
       log.debug(
-        `Loaded ${getBaseUrl(req.url)}: ${req.status} ${req.statusText}`
+        `Loaded ${getBaseUrl(req.url)}: ${req.status} ${req.statusText}`,
       )
 
       if (!req.ok) {
         if (req.status === 401) {
           throw new PlexTokenError(
-            `Authentication error: ${getBaseUrl(req.url)}`
+            `Authentication error: ${getBaseUrl(req.url)}`,
           )
         } else {
           const responseText = await req.text()
           throw new Error(
             `${getBaseUrl(req.url)} returned ${
               req.status
-            }: ${truncateResponseText(responseText)}`
+            }: ${truncateResponseText(responseText)}`,
           )
         }
       }
@@ -179,15 +180,15 @@ export class PlexBackend implements MediaBackend {
         metadata = metadata.filter(metadataItem => {
           return metadataItem.Collection?.find(collection =>
             collectionFilter.find(
-              filter => filter.toLowerCase() === collection.tag.toLowerCase()
-            )
+              filter => filter.toLowerCase() === collection.tag.toLowerCase(),
+            ),
           )
         })
       }
 
       if (!metadata) {
         log.info(
-          `${libraryData.MediaContainer.librarySectionTitle} does not have any items. Skipping.`
+          `${libraryData.MediaContainer.librarySectionTitle} does not have any items. Skipping.`,
         )
         log.debug(JSON.stringify(libraryData, null, 2))
         continue
@@ -195,7 +196,7 @@ export class PlexBackend implements MediaBackend {
 
       ok(
         metadata?.length,
-        `${movieSection.title} doesn't appear to have any movies`
+        `${movieSection.title} doesn't appear to have any movies`,
       )
 
       log.debug(`Loaded ${metadata?.length} items from ${movieSection.title}`)
@@ -208,7 +209,7 @@ export class PlexBackend implements MediaBackend {
       if (!movie.thumb) {
         const movieTitle = String(movie.title ?? 'Unknown')
         log.debug(
-          `Item ${movieTitle} (guid: ${movie.guid}) has no thumb, skipping`
+          `Item ${movieTitle} (guid: ${movie.guid}) has no thumb, skipping`,
         )
         continue
       }
@@ -225,7 +226,7 @@ export class PlexBackend implements MediaBackend {
         summary: String(movie.summary ?? ''),
         year: String(movie.year ?? ''),
         art: `/poster/${encodeURIComponent(
-          movie.thumb.replace('/library/metadata/', '')
+          movie.thumb.replace('/library/metadata/', ''),
         )}`,
         director: (movie.Director ?? [{ tag: undefined }])[0].tag,
         rating: String(movie.rating ?? ''),
@@ -252,14 +253,14 @@ export class PlexBackend implements MediaBackend {
     if (!posterReq.ok) {
       if (posterReq.status === 401) {
         throw new PlexTokenError(
-          `Authentication error: ${getBaseUrl(posterReq.url)}`
+          `Authentication error: ${getBaseUrl(posterReq.url)}`,
         )
       } else {
         const responseText = await posterReq.text()
         throw new Error(
           `${getBaseUrl(posterReq.url)} returned ${
             posterReq.status
-          }: ${truncateResponseText(responseText)}`
+          }: ${truncateResponseText(responseText)}`,
         )
       }
     }
@@ -278,15 +279,15 @@ export class PlexBackend implements MediaBackend {
 
     if (linkType === 'app') {
       return `plex://preplay/?metadataKey=${encodeURIComponent(
-        key
+        key,
       )}&metadataType=1&server=${serverId}`
     } else if (linkType === 'plex.tv') {
       return `https://app.plex.tv/desktop#!/server/${serverId}/details?key=${encodeURIComponent(
-        key
+        key,
       )}`
     } else {
       return `${PLEX_URL}/web/index.html#!/server/${serverId}/details?key=${encodeURIComponent(
-        key
+        key,
       )}`
     }
   }
@@ -298,7 +299,7 @@ export class PlexBackend implements MediaBackend {
       `${PLEX_URL}/media/providers?X-Plex-Token=${PLEX_TOKEN}`,
       {
         headers: { accept: 'application/json' },
-      }
+      },
     )
 
     if (!req.ok) {
@@ -309,7 +310,7 @@ export class PlexBackend implements MediaBackend {
         throw new Error(
           `${getBaseUrl(req.url)} returned ${
             req.status
-          }: ${truncateResponseText(responseText)}`
+          }: ${truncateResponseText(responseText)}`,
         )
       }
     }

@@ -5,6 +5,7 @@
   "LOGIN_SUBMIT": "Abschicken",
   "RATE_SECTION_LOADING": "Lade Filme...",
   "RATE_SECTION_EXHAUSTED_CARDS": "Wir haben das Ende der Fahrt erreicht 🎢. Bitte achten Sie auf Ihren Kopf auf dem Weg nach draußen.",
+  "RATE_SECTION_UNDO": "Rückgängig",
   "MATCHES_SECTION_TITLE": "Übereinstimmungen",
   "MATCHES_SECTION_NO_MATCHES": "Niemand will mit dir einen Film schauen ... noch nicht.",
   "MATCHES_SECTION_CARD_LIKERS": "$USERS wollen $MOVIE sehen",

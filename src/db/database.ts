@@ -38,7 +38,7 @@ export function initDatabase(): void {
         `If you mounted a host directory into the container, make sure it is writable.\n` +
         `Example fix: mkdir -p ./data && sudo chown -R 1000:1000 ./data\n\n` +
         `Alternatively, set DATABASE_PATH to a writable location.\n\n` +
-        `System error: ${systemError}`
+        `System error: ${systemError}`,
     )
   }
 
@@ -104,7 +104,7 @@ export function initDatabase(): void {
         `If you mounted a host directory into the container, make sure it is writable.\n` +
         `Example fix: mkdir -p ./data && sudo chown -R 1000:1000 ./data\n\n` +
         `Alternatively, set DATABASE_PATH to a writable location.\n\n` +
-        `System error: ${systemError}`
+        `System error: ${systemError}`,
     )
   }
 }
@@ -183,24 +183,23 @@ export function closeDatabase(): void {
 export function ensureRoom(roomCode: string): void {
   const db = getDatabase()
   const stmt = db.prepare(
-    'INSERT OR IGNORE INTO rooms (code, created_at) VALUES (?, ?)'
+    'INSERT OR IGNORE INTO rooms (code, created_at) VALUES (?, ?)',
   )
   stmt.run(roomCode, Date.now())
 }
 
 export function getOrCreateUser(
   roomCode: string,
-  name: string
+  name: string,
 ): { id: number; name: string } {
   const db = getDatabase()
 
   // First try to get existing user
   const getStmt = db.prepare(
-    'SELECT id, name FROM users WHERE room_code = ? AND name = ?'
+    'SELECT id, name FROM users WHERE room_code = ? AND name = ?',
   )
   const existing = getStmt.get(roomCode, name) as
-    | { id: number; name: string }
-    | undefined
+    { id: number; name: string } | undefined
 
   if (existing) {
     return existing
@@ -208,13 +207,13 @@ export function getOrCreateUser(
 
   // Create new user
   const insertStmt = db.prepare(
-    'INSERT INTO users (room_code, name, created_at) VALUES (?, ?, ?)'
+    'INSERT INTO users (room_code, name, created_at) VALUES (?, ?, ?)',
   )
   insertStmt.run(roomCode, name, Date.now())
 
   // Get the inserted user
   const getNewStmt = db.prepare(
-    'SELECT id, name FROM users WHERE room_code = ? AND name = ?'
+    'SELECT id, name FROM users WHERE room_code = ? AND name = ?',
   )
   return getNewStmt.get(roomCode, name) as { id: number; name: string }
 }
@@ -247,7 +246,7 @@ export function upsertMedia(items: MediaItem[]): void {
       // key: ensure it's a string
       String(item.key || ''),
       // type: pass through (should be 'movie' or 'show')
-      item.type
+      item.type,
     )
   }
 }
@@ -274,7 +273,7 @@ export function getRoomMedia(roomCode: string): MediaItem[] {
 export function getRoomMediaGuids(roomCode: string): Set<string> {
   const db = getDatabase()
   const stmt = db.prepare(
-    'SELECT media_guid FROM room_media WHERE room_code = ?'
+    'SELECT media_guid FROM room_media WHERE room_code = ?',
   )
 
   const rows = stmt.all(roomCode) as Array<{ media_guid: string }>
@@ -291,7 +290,7 @@ export function addRoomMedia(roomCode: string, items: MediaItem[]): void {
 
     // Get max position for this room
     const maxStmt = db.prepare(
-      'SELECT MAX(position) as max_pos FROM room_media WHERE room_code = ?'
+      'SELECT MAX(position) as max_pos FROM room_media WHERE room_code = ?',
     )
     const result = maxStmt.get(roomCode) as { max_pos: number | null }
     let position = (result.max_pos ?? -1) + 1
@@ -317,7 +316,7 @@ export function addRoomMedia(roomCode: string, items: MediaItem[]): void {
 export function recordSwipe(
   userId: number,
   mediaGuid: string,
-  wantsToWatch: boolean
+  wantsToWatch: boolean,
 ): boolean {
   const db = getDatabase()
   const stmt = db.prepare(`
@@ -342,7 +341,7 @@ export function getUserSwipedGuids(userId: number): Set<string> {
 export function getUserLikedGuids(userId: number): Set<string> {
   const db = getDatabase()
   const stmt = db.prepare(
-    'SELECT media_guid FROM swipes WHERE user_id = ? AND wants_to_watch = 1'
+    'SELECT media_guid FROM swipes WHERE user_id = ? AND wants_to_watch = 1',
   )
 
   const rows = stmt.all(userId) as Array<{ media_guid: string }>
@@ -351,7 +350,7 @@ export function getUserLikedGuids(userId: number): Set<string> {
 
 export function getLikersForMedia(
   roomCode: string,
-  mediaGuid: string
+  mediaGuid: string,
 ): string[] {
   const db = getDatabase()
   const stmt = db.prepare(`
@@ -365,6 +364,35 @@ export function getLikersForMedia(
   return rows.map(row => row.name)
 }
 
+export function deleteLastSwipe(
+  userId: number,
+): { guid: string; wantsToWatch: boolean } | null {
+  const db = getDatabase()
+  const stmt = db.prepare(`
+    SELECT media_guid, wants_to_watch FROM swipes
+    WHERE user_id = ?
+    ORDER BY created_at DESC, rowid DESC
+    LIMIT 1
+  `)
+
+  const row = stmt.get(userId) as
+    { media_guid: string; wants_to_watch: number } | undefined
+
+  if (!row) {
+    return null
+  }
+
+  const deleteStmt = db.prepare(
+    'DELETE FROM swipes WHERE user_id = ? AND media_guid = ?',
+  )
+  deleteStmt.run(userId, row.media_guid)
+
+  return {
+    guid: row.media_guid,
+    wantsToWatch: row.wants_to_watch === 1,
+  }
+}
+
 export function roomExists(roomCode: string): boolean {
   const db = getDatabase()
   const stmt = db.prepare('SELECT 1 FROM rooms WHERE code = ? LIMIT 1')
@@ -373,7 +401,7 @@ export function roomExists(roomCode: string): boolean {
 }
 
 export function getRoomMatches(
-  roomCode: string
+  roomCode: string,
 ): Array<{ movie: MediaItem; users: string[] }> {
   const db = getDatabase()
 

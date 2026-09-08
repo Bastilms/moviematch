@@ -25,8 +25,8 @@ export function setLevel(level: string): void {
     const validLevels = Object.keys(LogLevels)
     throw new Error(
       `${level} is not a recognised log level. Please use one of these: ${validLevels.join(
-        ', '
-      )}`
+        ', ',
+      )}`,
     )
   }
   currentLevel = LogLevels[upper as keyof typeof LogLevels]

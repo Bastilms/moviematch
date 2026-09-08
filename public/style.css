@@ -34,20 +34,22 @@ html {
   --ink: #12111f;
   --ink-raised: #1b1a2e;
   --edge: #2f2c4a;
+  --edge-strong: #7a7ab8;
   --bone: #eeecf5;
   --muted: #8b87a8;
   --flare: #e64747;
   --indigo: #4747e6;
+  --focus: #8f8fff;
 
   font-family: system-ui;
   touch-action: manipulation;
 }
 
 body {
-  text-rendering: optimizeSpeed;
+  text-rendering: optimizespeed;
   line-height: 1.5;
   background-color: var(--ink);
-  background-image: url(assets/background-grain.png);
+  background-image: url('assets/background-grain.png');
   background-size: auto;
   background-repeat: repeat;
   color: var(--bone);
@@ -87,16 +89,18 @@ body {
   height: var(--height);
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 8px 32px rgb(0 0 0 / 60%);
   position: relative;
   border: 1px solid var(--edge);
-  transition: border 100ms ease-in-out, box-shadow 100ms ease-in-out;
+  transition:
+    border 100ms ease-in-out,
+    box-shadow 100ms ease-in-out;
 }
 
 @media (hover: hover) {
   a.card:hover {
     border: 1px solid var(--flare);
-    box-shadow: 0 8px 32px rgba(230, 71, 71, 0.3);
+    box-shadow: 0 8px 32px rgb(230 71 71 / 30%);
   }
 }
 
@@ -117,10 +121,10 @@ body {
   background-image:
     linear-gradient(
       179deg,
-      rgba(18, 17, 31, 0) 0%,
-      rgba(18, 17, 31, 0) 20%,
-      rgba(0, 0, 0, 0.5) 40%,
-      rgba(0, 0, 0, 0.95) 100%
+      rgb(18 17 31 / 0%) 0%,
+      rgb(18 17 31 / 0%) 20%,
+      rgb(0 0 0 / 50%) 40%,
+      rgb(0 0 0 / 95%) 100%
     );
   text-align: left;
   color: var(--bone);
@@ -230,11 +234,11 @@ body {
   min-width: 56px;
   border-radius: var(--s2);
   background-color: var(--ink-raised);
-  border: 1px solid var(--edge);
+  border: 1px solid var(--edge-strong);
 }
 
 .rate-controls button:focus-visible {
-  outline: 3px solid var(--indigo);
+  outline: 3px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -280,7 +284,7 @@ body {
   color: var(--bone);
   padding: 0.35rem 0.75rem;
   border-radius: 0 0.5rem 0.5rem 0;
-  box-shadow: 0 4px 16px rgba(71, 71, 230, 0.2);
+  box-shadow: 0 4px 16px rgb(71 71 230 / 20%);
   font-weight: 700;
   transform: translate(-90%, 50%);
 }
@@ -299,7 +303,7 @@ body {
   height: 1.5rem;
   border-radius: 50%;
   background-color: var(--flare);
-  color: var(--bone);
+  color: var(--ink);
   font-family: system-ui;
   font-weight: 700;
   font-size: 0.875rem;
@@ -338,18 +342,20 @@ body {
   font-weight: 600;
   text-decoration: none;
   display: inline-block;
-  transition: background-color 200ms ease-in-out, box-shadow 200ms ease-in-out;
+  transition:
+    background-color 200ms ease-in-out,
+    box-shadow 200ms ease-in-out;
 }
 
 .matches-action:focus-visible {
-  outline: 3px solid var(--indigo);
+  outline: 3px solid var(--focus);
   outline-offset: 2px;
 }
 
 @media screen and (hover: hover) {
   .matches-action:hover {
     background-color: #f55;
-    box-shadow: 0 4px 12px rgba(230, 71, 71, 0.4);
+    box-shadow: 0 4px 12px rgb(230 71 71 / 40%);
   }
 }
 
@@ -361,7 +367,7 @@ body {
   width: 100%;
   min-height: 70vh;
   height: max-content;
-  grid-gap: var(--s4);
+  gap: var(--s4);
   overflow: auto;
   padding: var(--s4) 0 var(--s3) 10vw;
   scroll-snap-type: x mandatory;
@@ -370,7 +376,6 @@ body {
 .matches-list li {
   scroll-snap-align: start;
   scroll-margin-left: 10vw;
-  scroll-snap-margin-left: 10vw;
 }
 
 .matches-list::after {
@@ -403,7 +408,6 @@ body {
 .login-section .logo {
   width: clamp(4rem, 50%, 15.5rem);
   margin-bottom: var(--s6);
-  color: var(--flare);
 }
 
 .login-form {
@@ -419,8 +423,6 @@ body {
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
   margin-bottom: -0.25rem;
   margin-left: 0.25rem;
 }
@@ -431,7 +433,7 @@ body {
 
 .login-form input {
   background: var(--ink-raised);
-  border: 2px solid var(--edge);
+  border: 2px solid var(--edge-strong);
   border-radius: 0.5rem;
   padding: 0.75rem 1rem;
   font-size: 1rem;
@@ -440,9 +442,9 @@ body {
 }
 
 .login-form input:focus-visible {
-  outline: none;
-  border-color: var(--indigo);
-  box-shadow: 0 0 0 3px rgba(71, 71, 230, 0.15);
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  border-color: var(--focus);
 }
 
 .login-form input[name='roomCode'] {
@@ -469,7 +471,7 @@ body {
 
 .login-form .room-code-container .generate-button {
   appearance: none;
-  border: 2px solid var(--edge);
+  border: 2px solid var(--edge-strong);
   background: var(--indigo);
   color: var(--bone);
   cursor: pointer;
@@ -481,12 +483,14 @@ body {
   font-weight: 600;
   font-size: 0.875rem;
   border-radius: 0 0.5rem 0.5rem 0;
-  transition: background-color 200ms ease-in-out, box-shadow 200ms ease-in-out;
+  transition:
+    background-color 200ms ease-in-out,
+    box-shadow 200ms ease-in-out;
 }
 
 .login-form .room-code-container .generate-button:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(71, 71, 230, 0.3);
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
 }
 
 @media screen and (hover: hover) {
@@ -509,18 +513,20 @@ body {
   font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
-  transition: background-color 200ms ease-in-out, box-shadow 200ms ease-in-out;
+  transition:
+    background-color 200ms ease-in-out,
+    box-shadow 200ms ease-in-out;
 }
 
 .login-form .submit-button:focus-visible {
-  outline: 3px solid var(--indigo);
+  outline: 3px solid var(--focus);
   outline-offset: 2px;
 }
 
 @media screen and (hover: hover) {
   .login-form .submit-button:hover {
     background-color: #f55;
-    box-shadow: 0 4px 12px rgba(230, 71, 71, 0.3);
+    box-shadow: 0 4px 12px rgb(230 71 71 / 30%);
   }
 }
 
@@ -533,4 +539,45 @@ footer {
   font-weight: 500;
   padding: 1rem 0;
   margin-top: auto;
+}
+
+.rate-undo-container {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--s3);
+  margin-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.rate-undo {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 1.5rem;
+  border: 1px solid var(--edge-strong);
+  border-radius: 0.5rem;
+  background-color: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 500;
+  transition: color 200ms ease-in-out;
+}
+
+.rate-undo:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.rate-undo:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@media screen and (hover: hover) {
+  .rate-undo:not(:disabled):hover {
+    color: var(--bone);
+    border-color: var(--muted);
+  }
 }
