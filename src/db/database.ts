@@ -2,9 +2,33 @@ import { DatabaseSync } from 'node:sqlite'
 import { mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { DATABASE_PATH } from '../config.js'
+import * as log from '../util/logger.js'
 import type { MediaItem } from '../backends/types.js'
 
 let instance: DatabaseSync | null = null
+
+/**
+ * Run database migrations. This is idempotent and safe to call multiple times.
+ */
+function runMigrations(db: DatabaseSync): void {
+  // Check if jellyfin_user_id column exists in users table
+  const tableInfo = db.prepare('PRAGMA table_info(users)').all() as Array<{
+    name: string
+  }>
+  const hasJellyfinUserIdColumn = tableInfo.some(
+    col => col.name === 'jellyfin_user_id',
+  )
+
+  if (!hasJellyfinUserIdColumn) {
+    // Add the column if it doesn't exist
+    db.exec('ALTER TABLE users ADD COLUMN jellyfin_user_id TEXT')
+    log.info(
+      'Database migration applied: added column "jellyfin_user_id" to table "users".',
+    )
+  } else {
+    log.debug('Database migration: schema already up to date.')
+  }
+}
 
 /**
  * Initialize the database on startup. This checks that the database directory
@@ -95,6 +119,9 @@ export function initDatabase(): void {
         PRIMARY KEY (user_id, media_guid)
       );
     `)
+
+    // Run migrations (idempotent)
+    runMigrations(instance)
   } catch (err) {
     const systemError = err instanceof Error ? err.message : String(err)
     throw new Error(
@@ -170,6 +197,9 @@ export function getDatabase(): DatabaseSync {
     );
   `)
 
+  // Run migrations (idempotent)
+  runMigrations(instance)
+
   return instance
 }
 
@@ -216,6 +246,43 @@ export function getOrCreateUser(
     'SELECT id, name FROM users WHERE room_code = ? AND name = ?',
   )
   return getNewStmt.get(roomCode, name) as { id: number; name: string }
+}
+
+/**
+ * Get user by name in a room, including their jellyfin_user_id if set.
+ * Returns null if the user doesn't exist.
+ */
+export function getUserByName(
+  roomCode: string,
+  name: string,
+): { id: number; jellyfinUserId: string | null } | null {
+  const db = getDatabase()
+  const stmt = db.prepare(
+    'SELECT id, jellyfin_user_id FROM users WHERE room_code = ? AND name = ?',
+  )
+  const result = stmt.get(roomCode, name) as
+    { id: number; jellyfin_user_id: string | null } | undefined
+
+  if (!result) {
+    return null
+  }
+
+  return {
+    id: result.id,
+    jellyfinUserId: result.jellyfin_user_id,
+  }
+}
+
+/**
+ * Set the Jellyfin account ID for a user.
+ */
+export function setUserJellyfinId(
+  userId: number,
+  jellyfinUserId: string,
+): void {
+  const db = getDatabase()
+  const stmt = db.prepare('UPDATE users SET jellyfin_user_id = ? WHERE id = ?')
+  stmt.run(jellyfinUserId, userId)
 }
 
 export function upsertMedia(items: MediaItem[]): void {

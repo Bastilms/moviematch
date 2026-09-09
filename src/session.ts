@@ -9,6 +9,8 @@ import type { MediaItem } from './backends/types.js'
 import {
   ensureRoom,
   getOrCreateUser,
+  getUserByName,
+  setUserJellyfinId,
   getRoomMedia,
   getRoomMediaGuids,
   addRoomMedia,
@@ -620,6 +622,65 @@ export const handleLogin = (ws: WebSocket): Promise<SessionUser> => {
             }
           }
 
+          // Check for Jellyfin account lock on this name
+          const existingUser = getUserByName(roomCode, name)
+
+          // If name is reserved for Jellyfin but BACKEND is not Jellyfin, reject all attempts
+          if (
+            existingUser &&
+            existingUser.jellyfinUserId !== null &&
+            BACKEND !== 'jellyfin'
+          ) {
+            log.info(
+              `Login rejected: name ${name} requires Jellyfin login but backend is not Jellyfin`,
+            )
+            const response: WebSocketLoginResponseMessage = {
+              type: 'loginResponse',
+              payload: {
+                success: false,
+                reason:
+                  'This name requires Jellyfin authentication, but Jellyfin is not available with the current backend.',
+              },
+            }
+            ws.send(JSON.stringify(response))
+            return
+          }
+
+          // Check if name has been claimed by a specific Jellyfin account
+          if (existingUser && existingUser.jellyfinUserId !== null) {
+            if (!jellyfinSession) {
+              // Trying to login without password when name is reserved
+              log.info(
+                `Login rejected: name ${name} is reserved for a Jellyfin account (login without password)`,
+              )
+              const response: WebSocketLoginResponseMessage = {
+                type: 'loginResponse',
+                payload: {
+                  success: false,
+                  reason:
+                    'This name is reserved for a Jellyfin account. Please sign in with your Jellyfin password.',
+                },
+              }
+              ws.send(JSON.stringify(response))
+              return
+            } else if (jellyfinSession.userId !== existingUser.jellyfinUserId) {
+              // Trying to login with wrong Jellyfin account
+              log.info(
+                `Login rejected: name ${name} belongs to a different Jellyfin account`,
+              )
+              const response: WebSocketLoginResponseMessage = {
+                type: 'loginResponse',
+                payload: {
+                  success: false,
+                  reason: 'This name belongs to a different Jellyfin account.',
+                },
+              }
+              ws.send(JSON.stringify(response))
+              return
+            }
+            // Right Jellyfin account, proceed
+          }
+
           log.info(
             `Got a login: roomCode=${roomCode}, name=${name}, jellyfinAuth=${jellyfinAuthenticated}`,
           )
@@ -629,6 +690,15 @@ export const handleLogin = (ws: WebSocket): Promise<SessionUser> => {
 
           // Get or create user in database
           const user = getOrCreateUser(roomCode, name)
+
+          // If authenticated with Jellyfin and name was never claimed before, register the account ID
+          if (
+            jellyfinSession &&
+            (!existingUser || existingUser.jellyfinUserId === null)
+          ) {
+            // Either new user or existing user with no Jellyfin ID yet
+            setUserJellyfinId(user.id, jellyfinSession.userId)
+          }
 
           // Check if this user already has an active connection
           if (session.userConnections.has(user.id)) {

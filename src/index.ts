@@ -1,4 +1,5 @@
 import http from 'node:http'
+import { resolve } from 'node:path'
 import * as log from './util/logger.js'
 import { getBackend } from './backends/index.js'
 import {
@@ -9,6 +10,7 @@ import {
   RATE_LIMIT_WS_PER_MINUTE,
   RATE_LIMIT_MESSAGES_PER_MINUTE,
   TRUST_PROXY,
+  DATABASE_PATH,
 } from './config.js'
 import { getLinkTypeForRequest } from './i18n.js'
 import { handleLogin } from './session.js'
@@ -437,6 +439,7 @@ process.on('SIGTERM', gracefulShutdown)
 // Initialize database before starting the server
 try {
   initDatabase()
+  log.info(`Database ready at ${resolve(DATABASE_PATH)}`)
 } catch (err) {
   log.critical(err instanceof Error ? err.message : String(err))
   process.exit(1)
