@@ -205,7 +205,7 @@ Do **not** expose an unprotected MovieMatch instance to the public internet. Use
 
 ### Jellyfin User Authentication
 
-MovieMatch supports optional authentication with a Jellyfin user account (available only with `BACKEND=jellyfin`). This feature is controlled by a **Jellyfin password** field in the login form, directly under the name field. Leave it empty to join without authentication. Below the password field is an optional checkbox to **automatically sync matches to a Jellyfin playlist** (visible only when a password is provided).
+MovieMatch supports optional authentication with a Jellyfin user account (available only with `BACKEND=jellyfin`). This feature is controlled by a **Jellyfin password** field in the login form, directly under the name field. Leave it empty to join without authentication. Below the password field is an optional checkbox to **automatically sync matches to a Jellyfin playlist**. Both the password field and the checkbox appear whenever the server runs with `BACKEND=jellyfin`; the checkbox only takes effect if you actually enter a password, since the playlist is created in the account you sign in with.
 
 When you authenticate, your password is transmitted from the browser to the MovieMatch server and then to the Jellyfin server. On unsecured connections (plain HTTP), the password travels in cleartext and can be intercepted — **HTTPS is strongly recommended**.
 
