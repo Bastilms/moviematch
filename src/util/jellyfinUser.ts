@@ -1,6 +1,20 @@
 import { JELLYFIN_URL, getVersion } from '../config.js'
 import * as log from './logger.js'
 
+/**
+ * Jellyfin-Kennungen sind 32-stelliges Hex oder eine GUID mit Bindestrichen.
+ * Werte aus Antworten des Medienservers landen in ausgehenden URL-Pfaden und
+ * werden deshalb geprueft, bevor sie eingesetzt werden.
+ */
+const JELLYFIN_ID_REGEX =
+  /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i
+
+export function assertJellyfinId(id: string, context: string): void {
+  if (typeof id !== 'string' || !JELLYFIN_ID_REGEX.test(id)) {
+    throw new Error(`Jellyfin returned an unexpected ${context}.`)
+  }
+}
+
 export interface JellyfinSession {
   userId: string
   userName: string

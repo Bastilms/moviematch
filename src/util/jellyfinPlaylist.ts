@@ -1,6 +1,7 @@
 import * as log from './logger.js'
 import { JELLYFIN_URL, getVersion } from '../config.js'
 import type { JellyfinSession } from './jellyfinUser.js'
+import { assertJellyfinId } from './jellyfinUser.js'
 
 /**
  * Bringt die Playlist dieses Nutzers auf den angegebenen Stand.
@@ -16,6 +17,10 @@ export async function syncPlaylist(opts: {
 }): Promise<string> {
   const { session, playlistName, itemIds, knownPlaylistId } = opts
 
+  // Die Kennungen stammen aus Antworten des Jellyfin-Servers und werden
+  // unten in URL-Pfade eingesetzt. Deshalb vorher streng pruefen.
+  assertJellyfinId(session.userId, 'user id')
+
   let playlistId: string | null = knownPlaylistId
 
   // Schritt 1: Playlist finden oder erstellen
@@ -27,10 +32,13 @@ export async function syncPlaylist(opts: {
     if (existingPlaylistId) {
       playlistId = existingPlaylistId
     } else {
-      playlistId = await createPlaylist(session, playlistName, itemIds)
-      return playlistId
+      const created = await createPlaylist(session, playlistName, itemIds)
+      assertJellyfinId(created, 'playlist id')
+      return created
     }
   }
+
+  assertJellyfinId(playlistId, 'playlist id')
 
   // Schritt 2: Wenn Playlist existiert, abgleichen
   await syncPlaylistItems(session, playlistId, itemIds)
