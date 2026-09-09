@@ -10,7 +10,7 @@ MovieMatch connects to your Plex or Jellyfin server and gets a list of movies fr
 
 As many people as you want connect to your MovieMatch server and get a list of shuffled movies. Swipe right to 👍, swipe left to 👎.
 
-If two (or more) people swipe right on the same movie, it'll show up in everyone's matches. The movies that the most people swiped right on will show up first.
+A title is a match when every participant in the room has rated it and all ratings are positive. Participants are all users who have made at least one swipe. In **single-user mode** (when only one person has swiped), all their likes are matches. Once a second person makes their first swipe, they become a participant and only titles rated positively by both are matches. Existing matches may disappear at this point if they don't meet the new criteria. Note that matches can also disappear if someone swipes left on a title that was previously a match.
 
 **Rooms and ratings persist across server restarts** — thanks to SQLite, your matches and ratings are saved to disk and will be available when MovieMatch starts again.
 
@@ -118,9 +118,17 @@ The following variables are supported via a `.env` file or environment variables
 
 ## Share and Export
 
+### Flip Cards
+
+Tap on a card to flip it and see additional information: title (linked to the media server), year and director, summary, and rating (if available). The rating comes from your Plex or Jellyfin library — no external service is queried. Clicking the title link opens the media in your server in a new tab.
+
+### Undo Last Rating
+
+An **Undo** button below the thumbs appears after your first swipe. It removes your most recent rating and returns the card to the deck. If this causes a title to no longer be a match, it is removed from everyone's match list. The undo history is only kept for the current session; reloading the page disables the button.
+
 ### Share Room Link
 
-When viewing matches, a **Share** button in the top-right corner lets you share the room with others:
+When viewing matches, a **Share** button (centered in the matches section) lets you share the room with others:
 - On devices that support it, opens the native share menu
 - Otherwise, copies the link to your clipboard
 
@@ -136,6 +144,17 @@ GET /api/rooms/<CODE>/matches.csv
 The CSV contains the following columns: `Title`, `Year`, `Director`, `Rating`, `Type`, `Likes`, `Users`, `Link`.
 
 An **Export** button in the matches view provides convenient access to this endpoint.
+
+### Export Personal Likes to CSV
+
+You can also export only your own positive ratings:
+```
+GET /api/rooms/<CODE>/likes.csv?user=<Name>
+```
+
+The CSV contains the following columns: `Title`, `Year`, `Director`, `Rating`, `Type`, `Link` (no `Likes` or `Users`).
+
+A **Likes** button in the matches view provides convenient access. Note that like the matches endpoint, this is unauthenticated: anyone who knows the room code and a person's name can download their likes.
 
 ## FAQ
 
@@ -153,12 +172,12 @@ Yes, you can include a TV library in your `LIBRARY_FILTER` list or set `DEFAULT_
 
 MovieMatch uses SQLite to persist:
 - Room metadata (room codes, creation time)
+- User metadata (names, creation time per room, and optionally the Jellyfin user ID if the user authenticated with Jellyfin)
 - User ratings for each movie (which users swiped right/left on which movies)
-- Matches (when two or more users swiped right on the same movie)
 
 The database file is stored at the path specified by `DATABASE_PATH` (default: `./data/moviematch.db`). Deleting this file will erase all saved ratings and matches.
 
-All other data is kept in memory while the server runs.
+All other data is kept in memory while the server runs. Jellyfin credentials (passwords and access tokens) are never stored — they are used only during the current session to maintain playlists.
 
 ### Do you gather any data outside the database?
 
@@ -186,6 +205,12 @@ Do **not** expose an unprotected MovieMatch instance to the public internet. Use
 
 ### Jellyfin User Authentication
 
-MovieMatch supports optional authentication with a Jellyfin user account. When this feature is used, the user's password is transmitted from the browser to the MovieMatch server and then to the Jellyfin server. On unsecured connections (plain HTTP), the password travels in cleartext and can be intercepted — **HTTPS is strongly recommended** for this feature.
+MovieMatch supports optional authentication with a Jellyfin user account (available only with `BACKEND=jellyfin`). This feature is controlled by a **Jellyfin password** field in the login form, directly under the name field. Leave it empty to join without authentication. Below the password field is an optional checkbox to **automatically sync matches to a Jellyfin playlist** (visible only when a password is provided).
 
-MovieMatch does not store passwords or persist Jellyfin credentials. The access token returned by Jellyfin is kept only in server memory for the duration of the connection and is not saved to disk or the database.
+When you authenticate, your password is transmitted from the browser to the MovieMatch server and then to the Jellyfin server. On unsecured connections (plain HTTP), the password travels in cleartext and can be intercepted — **HTTPS is strongly recommended**.
+
+MovieMatch does not store passwords or persist Jellyfin credentials. The access token returned by Jellyfin is kept only in server memory for the duration of the connection. When you log in with a Jellyfin account, the server records your Jellyfin user ID in the database — only the ID, never the password or token. This ID is used to enforce **name reservations**: once a name is used with Jellyfin authentication in a room, that name becomes locked to that specific Jellyfin account. Subsequent logins with that name require the same Jellyfin password. If you later run the server with `BACKEND=plex`, the lock remains in place and the name becomes unusable by anyone. Names that were never used with Jellyfin remain freely available.
+
+#### Jellyfin Playlist Sync
+
+If you check the **create playlist** option, MovieMatch automatically keeps a playlist in sync with the room's current matches. The playlist is created in your Jellyfin account and named after the room participants and code, for example `Anna, Bert – ABCD`. When participants are added, the name updates. As matches change (titles added or removed), the playlist is kept in sync — titles are added when they become matches and removed when they no longer meet the criteria. Each authenticated user gets their own playlist in their account. Only participants authenticated with Jellyfin maintain playlists; unauthenticated users swipe normally but do not contribute to any playlist.
