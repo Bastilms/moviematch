@@ -311,7 +311,7 @@ export class JellyfinBackend implements MediaBackend {
       url.searchParams.set('userId', userId)
       url.searchParams.set('parentId', viewId)
       url.searchParams.set('recursive', 'true')
-      url.searchParams.set('fields', 'Overview,People,ProductionYear')
+      url.searchParams.set('fields', 'Overview,ProductionYear')
       url.searchParams.set('sortBy', 'SortName')
       url.searchParams.set('startIndex', String(startIndex))
       url.searchParams.set('limit', String(limit))
@@ -506,5 +506,56 @@ export class JellyfinBackend implements MediaBackend {
     return `${JELLYFIN_URL}/web/index.html#/details?id=${encodeURIComponent(
       key,
     )}&serverId=${serverId}`
+  }
+
+  async enrichItems(items: MediaItem[]): Promise<void> {
+    if (items.length === 0) {
+      return
+    }
+
+    // Collect GUIDs from items
+    const guids = items.map(item => item.key).join(',')
+
+    const url = new URL(`${JELLYFIN_URL}/Items`)
+    url.searchParams.set('userId', await this.getUserId())
+    url.searchParams.set('ids', guids)
+    url.searchParams.set('fields', 'People')
+
+    const response = await this.fetchAuthenticated(url.toString())
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new JellyfinAuthError(`Authentication error: ${response.url}`)
+      } else {
+        const responseText = await response.text()
+        throw new Error(
+          `${response.url} returned ${response.status}: ${truncateResponseText(
+            responseText,
+          )}`,
+        )
+      }
+    }
+
+    const data: { Items?: JellyfinItem[] } = await response.json()
+
+    if (!Array.isArray(data.Items)) {
+      throw new Error(
+        `Unexpected response from ${response.url}: expected an "Items" array`,
+      )
+    }
+
+    // Build a map from Id to director name
+    const directorMap = new Map<string, string | undefined>()
+    for (const item of data.Items) {
+      const director = (item.People ?? []).find(
+        p => p.Type === 'Director',
+      )?.Name
+      directorMap.set(item.Id, director)
+    }
+
+    // Update items with director information
+    for (const item of items) {
+      item.director = directorMap.get(item.key)
+    }
   }
 }

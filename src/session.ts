@@ -288,6 +288,15 @@ class Session {
         batch.push(candidatesCopy[i])
       }
 
+      // Enrich batch with additional data before storing
+      if (backend.enrichItems) {
+        try {
+          await backend.enrichItems(batch)
+        } catch (err) {
+          log.warning('Failed to enrich batch:', err)
+        }
+      }
+
       // Add to database and cache
       addRoomMedia(this.roomCode, batch)
       this.movieListCache.push(...batch)
