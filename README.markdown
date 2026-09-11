@@ -114,6 +114,8 @@ The following variables are supported via a `.env` file or environment variables
 | `RATE_LIMIT_HTTP_PER_MINUTE` | Maximum HTTP requests per IP address per minute                                                                                                                    | No       | 300                                                                                |
 | `RATE_LIMIT_WS_PER_MINUTE`   | Maximum WebSocket connection attempts per IP address per minute                                                                                                   | No       | 20                                                                                 |
 | `RATE_LIMIT_MESSAGES_PER_MINUTE` | Maximum WebSocket messages per IP address per minute                                                                                                           | No       | 300                                                                                |
+| `RATE_LIMIT_LOGIN_PER_MINUTE` | Maximum Jellyfin sign-in attempts per IP address per minute                                                                                    | No       | 10                                                                                 |
+| `SESSION_TTL_HOURS`         | How long a Jellyfin sign-in is kept in server memory. When the time is up, the session is discarded and its access token is invalidated at the Jellyfin server. | No       | 12                                                                                 |
 | `TRUST_PROXY`               | Trust `X-Forwarded-For` header for client IP detection. **Only enable if MovieMatch runs behind a trusted reverse proxy** (nginx, HAProxy, Apache). When disabled, each rate limit applies per proxy IP. When enabled, limits apply per origin IP. | No       | `false`                                                                            |
 
 ## Share and Export
@@ -177,7 +179,7 @@ MovieMatch uses SQLite to persist:
 
 The database file is stored at the path specified by `DATABASE_PATH` (default: `./data/moviematch.db`). Deleting this file will erase all saved ratings and matches.
 
-All other data is kept in memory while the server runs. Jellyfin credentials (passwords and access tokens) are never stored — they are used only during the current session to maintain playlists.
+All other data is kept in memory while the server runs. Passwords are never stored anywhere. A Jellyfin access token is held in server memory only, never on disk, and only for as long as the sign-in session lasts (see `SESSION_TTL_HOURS`).
 
 ### Do you gather any data outside the database?
 
@@ -205,11 +207,22 @@ Do **not** expose an unprotected MovieMatch instance to the public internet. Use
 
 ### Jellyfin User Authentication
 
-MovieMatch supports optional authentication with a Jellyfin user account (available only with `BACKEND=jellyfin`). This feature is controlled by a **Jellyfin password** field in the login form, directly under the name field. Leave it empty to join without authentication. Below the password field is an optional checkbox to **automatically sync matches to a Jellyfin playlist**. Both the password field and the checkbox appear whenever the server runs with `BACKEND=jellyfin`; the checkbox only takes effect if you actually enter a password, since the playlist is created in the account you sign in with.
+MovieMatch supports optional authentication with a Jellyfin user account (available only with `BACKEND=jellyfin`). This feature is controlled by a **Jellyfin password** field in the login form, below the room code field. Leave it empty to join without authentication. Below the password field is an optional checkbox to **automatically sync matches to a Jellyfin playlist**. Both the password field and the checkbox appear whenever the server runs with `BACKEND=jellyfin`; the checkbox only takes effect if you actually enter a password, since the playlist is created in the account you sign in with.
 
 When you authenticate, your password is transmitted from the browser to the MovieMatch server and then to the Jellyfin server. On unsecured connections (plain HTTP), the password travels in cleartext and can be intercepted — **HTTPS is strongly recommended**.
 
-MovieMatch does not store passwords or persist Jellyfin credentials. The access token returned by Jellyfin is kept only in server memory for the duration of the connection. When you log in with a Jellyfin account, the server records your Jellyfin user ID in the database — only the ID, never the password or token. This ID is used to enforce **name reservations**: once a name is used with Jellyfin authentication in a room, that name becomes locked to that specific Jellyfin account. Subsequent logins with that name require the same Jellyfin password. If you later run the server with `BACKEND=plex`, the lock remains in place and the name becomes unusable by anyone. Names that were never used with Jellyfin remain freely available.
+MovieMatch never stores passwords, and no Jellyfin credential is ever written to disk. The access token returned by Jellyfin is held in server memory as part of a session, which is addressed by an `HttpOnly` cookie and survives a page reload. The session is discarded after `SESSION_TTL_HOURS` (12 hours by default), or immediately when you log out, and its access token is invalidated at the Jellyfin server at that point. A sweeper checks for expired sessions every five minutes. When you log in with a Jellyfin account, the server records your Jellyfin user ID in the database — only the ID, never the password or token. This ID is used to enforce **name reservations**: once a name is used with Jellyfin authentication in a room, that name becomes locked to that specific Jellyfin account. Subsequent logins with that name require the same Jellyfin password. If you later run the server with `BACKEND=plex`, the lock remains in place and the name becomes unusable by anyone. Names that were never used with Jellyfin remain freely available.
+
+#### Staying Signed In
+
+The sign-in survives a page reload. If you reload, MovieMatch takes you straight back to the room you were in, without asking for the password again — the session is addressed by the cookie described above.
+
+Two controls are available once you are signed in:
+
+- **Change room** sits with the other buttons below the match list. It returns you to the login form so you can join a different room. Your name and your Jellyfin session are kept, so no password is needed as long as you keep the same name. The page reloads, which clears the card deck, the match list and the undo history.
+- **Your Jellyfin profile picture** appears in the top right corner. Clicking it opens a menu with a **Log out** entry. Logging out ends the session on the MovieMatch server, invalidates the access token at the Jellyfin server, and forgets your name and room in the browser, so nothing of yours is left behind on a shared machine. If you have no profile picture in Jellyfin, the first letter of your name is shown instead.
+
+The picture is fetched by the MovieMatch server and passed on to the browser, which never receives a Jellyfin token. The server identifies you from the session cookie alone, so nobody can request someone else's picture.
 
 #### Jellyfin Playlist Sync
 
