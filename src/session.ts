@@ -543,8 +543,13 @@ export const handleLogin = (ws: WebSocket): Promise<SessionUser> => {
               jellyfinAuthenticated = true
               // Den Namen aus der Sitzung verwenden (bereits korrekt setzen)
               name = ws.jellyfin.userName
+            } else {
+              // Der Name gehoert nicht zu dieser Sitzung. Sie wird von der
+              // Verbindung geloest, damit spaetere Schritte — insbesondere die
+              // Playlist-Synchronisierung — nicht doch noch auf das fremde
+              // Zugriffstoken zurueckgreifen koennen.
+              ws.jellyfin = null
             }
-            // Andernfalls: die Sitzung für diese Anmeldung ignorieren
           }
 
           // Validate roomCode format
@@ -681,13 +686,13 @@ export const handleLogin = (ws: WebSocket): Promise<SessionUser> => {
           log.debug(`User ${name} (id=${user.id}) logged in`)
 
           // Store Jellyfin session in WebSocket connection (if not already set from cookie)
-          // Only enable playlist if authenticated AND accessToken is present (not null)
           if (jellyfinSession && !ws.jellyfin) {
             ws.jellyfin = jellyfinSession
           }
 
-          // Enable playlist only if we have a Jellyfin session with an accessToken
-          if (ws.jellyfin && ws.jellyfin.accessToken !== null) {
+          // Das Playlist-Recht haengt ausdruecklich an der namensgeprueften
+          // Sitzung, nicht an dem, was per Cookie an der Verbindung hing.
+          if (jellyfinSession && jellyfinSession.accessToken !== null) {
             ws.playlistEnabled = true
           }
 
