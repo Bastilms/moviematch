@@ -31,14 +31,17 @@ export class MovieMatchAPI extends EventTarget {
   connect() {
     if (this._isUnloading) return
 
-    this.socket = new WebSocket(this.wsUrl)
-    this.socket.addEventListener('message', e => this.handleMessage(e))
-    this.socket.addEventListener('open', () => this.handleOpen())
-    this.socket.addEventListener('close', () => this.handleClose())
-    this.socket.addEventListener('error', () => this.handleError())
+    const socket = new WebSocket(this.wsUrl)
+    this.socket = socket
+    socket.addEventListener('message', e => this.handleMessage(e, socket))
+    socket.addEventListener('open', () => this.handleOpen(socket))
+    socket.addEventListener('close', () => this.handleClose(socket))
+    socket.addEventListener('error', () => this.handleError(socket))
   }
 
-  handleOpen() {
+  handleOpen(socket) {
+    if (socket && socket !== this.socket) return
+
     this._reconnectAttempts = 0
     this.setConnectionState('online')
     this.dispatchEvent(new Event('connectionOpen'))
@@ -49,14 +52,18 @@ export class MovieMatchAPI extends EventTarget {
     }
   }
 
-  handleClose() {
+  handleClose(socket) {
+    if (socket && socket !== this.socket) return
+
     if (!this._isUnloading) {
       this.setConnectionState('offline')
       this.scheduleReconnect()
     }
   }
 
-  handleError() {
+  handleError(socket) {
+    if (socket && socket !== this.socket) return
+
     if (!this._isUnloading) {
       this.setConnectionState('offline')
       this.scheduleReconnect()
@@ -77,6 +84,33 @@ export class MovieMatchAPI extends EventTarget {
         this.connect()
       }
     }, delay)
+  }
+
+  /**
+   * Baut die WebSocket-Verbindung neu auf. Der Sitzungs-Cookie wird vom
+   * Server nur beim Verbindungsaufbau gelesen. Nach einer Anmeldung ueber
+   * /api/jellyfin-login muss die Verbindung deshalb erneuert werden, damit
+   * die Sitzung an der Verbindung haengt.
+   */
+  async restartConnection() {
+    if (this._isUnloading) return
+
+    const previous = this.socket
+    this.connect()
+
+    if (
+      previous &&
+      previous.readyState !== WebSocket.CLOSING &&
+      previous.readyState !== WebSocket.CLOSED
+    ) {
+      previous.close()
+    }
+
+    if (this.socket.readyState !== WebSocket.OPEN) {
+      await new Promise(resolve =>
+        this.addEventListener('connectionOpen', resolve, { once: true }),
+      )
+    }
   }
 
   setConnectionState(state) {
@@ -117,7 +151,7 @@ export class MovieMatchAPI extends EventTarget {
     }
   }
 
-  async login(user, roomCode, password, createPlaylist) {
+  async login(user, roomCode, createPlaylist) {
     // Store credentials for reconnection (without password)
     this._lastLoginCredentials = {
       name: user,
@@ -128,11 +162,6 @@ export class MovieMatchAPI extends EventTarget {
     const payload = {
       name: user,
       roomCode,
-    }
-
-    // Only include password if it's provided and non-empty
-    if (password) {
-      payload.password = password
     }
 
     // Only include createPlaylist if it's explicitly set
@@ -171,7 +200,9 @@ export class MovieMatchAPI extends EventTarget {
     })
   }
 
-  handleMessage(e) {
+  handleMessage(e, socket) {
+    if (socket && socket !== this.socket) return
+
     const data = JSON.parse(e.data)
     const isReconnection =
       this._connectionState === 'reconnecting' || this._lastLoginCredentials

@@ -104,6 +104,9 @@
     data-i18n-no-summary="${CARD_NO_SUMMARY}"
     data-i18n-status-offline="${STATUS_OFFLINE}"
     data-i18n-status-reconnected="${STATUS_RECONNECTED}"
+    data-i18n-login-error-credentials="${LOGIN_ERROR_CREDENTIALS}"
+    data-i18n-login-error-rate-limited="${LOGIN_ERROR_RATE_LIMITED}"
+    data-i18n-login-error-unreachable="${LOGIN_ERROR_UNREACHABLE}"
     data-base-path="${ROOT_PATH}"
     data-backend="${BACKEND}"
   >
@@ -154,6 +157,7 @@
           <button type="button" class="matches-action js-share-button">${MATCHES_SECTION_SHARE}</button>
           <a class="matches-action js-export-csv" download>${MATCHES_SECTION_EXPORT_CSV}</a>
           <a class="matches-action js-export-likes" download>${MATCHES_SECTION_EXPORT_LIKES}</a>
+          <button type="button" class="matches-action js-change-room">${MATCHES_SECTION_CHANGE_ROOM}</button>
         </div>
         <p class="matches-title">
           <span class="matches-count js-matches-count" data-count="0"></span>

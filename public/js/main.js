@@ -151,6 +151,33 @@ const main = async () => {
   }
 }
 
+const authenticateWithJellyfin = async (name, password, createPlaylist) => {
+  const basePath = document.body.dataset.basePath || ''
+
+  let response
+  try {
+    response = await fetch(`${basePath}/api/jellyfin-login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ name, password, createPlaylist }),
+    })
+  } catch {
+    throw new Error(document.body.dataset['i18nLoginErrorUnreachable'])
+  }
+
+  if (response.status === 429) {
+    throw new Error(document.body.dataset['i18nLoginErrorRateLimited'])
+  }
+
+  if (!response.ok) {
+    throw new Error(document.body.dataset['i18nLoginErrorCredentials'])
+  }
+
+  const result = await response.json()
+  return result.playlistEnabled === true
+}
+
 export const login = async api => {
   const loginSection = document.querySelector('.login-section')
   const loginForm = document.querySelector('.js-login-form')
@@ -165,9 +192,12 @@ export const login = async api => {
   const shareButton = document.querySelector('.js-share-button')
   const exportCsvLink = document.querySelector('.js-export-csv')
   const exportLikesLink = document.querySelector('.js-export-likes')
+  const changeRoomButton = document.querySelector('.js-change-room')
+
+  const isJellyfin = document.body.dataset.backend === 'jellyfin'
 
   // Show password field only if backend is Jellyfin
-  if (document.body.dataset.backend === 'jellyfin') {
+  if (isJellyfin) {
     passwordLabel?.removeAttribute('hidden')
     passwordInput?.removeAttribute('hidden')
     playlistLabel?.removeAttribute('hidden')
@@ -282,6 +312,22 @@ export const login = async api => {
     }, 2000)
   }
 
+  // Zurueck zum Anmeldeformular, um einen anderen Raum zu betreten.
+  // Der Name und der Jellyfin-Sitzungscookie bleiben erhalten; nur der
+  // Raum wird vergessen. Das Neuladen setzt den gesamten Zustand der
+  // Oberflaeche (Kartenstapel, Trefferliste, Verlauf) sauber zurueck.
+  if (changeRoomButton) {
+    changeRoomButton.addEventListener('click', () => {
+      localStorage.removeItem('roomCode')
+      sessionStorage.setItem('skipAutoLogin', 'true')
+
+      const target = new URL(window.location.href)
+      target.search = ''
+      target.hash = ''
+      window.location.replace(target.toString())
+    })
+  }
+
   return new Promise(resolve => {
     const handleSubmit = async e => {
       e.preventDefault()
@@ -293,14 +339,27 @@ export const login = async api => {
       roomCode = roomCode.toUpperCase()
       if (name && roomCode) {
         try {
-          // Only send createPlaylist if password is provided
-          const createPlaylistArg =
-            password && createPlaylist ? true : undefined
+          // Bei gesetztem Passwort zuerst ueber den HTTP-Endpunkt anmelden.
+          // Der Server setzt dabei den Sitzungs-Cookie, den die WebSocket-
+          // Verbindung beim Aufbau mitschickt.
+          let playlistEnabled = false
+          if (isJellyfin && password) {
+            playlistEnabled = await authenticateWithJellyfin(
+              name,
+              password,
+              createPlaylist,
+            )
+            if (passwordInput) {
+              passwordInput.value = ''
+            }
+            // Verbindung erneuern, damit der frische Cookie mitgeht.
+            await api.restartConnection()
+          }
+
           const data = await api.login(
             name,
             roomCode,
-            password || undefined,
-            createPlaylistArg,
+            playlistEnabled ? true : undefined,
           )
           loginForm.removeEventListener('submit', handleSubmit)
 
@@ -324,11 +383,6 @@ export const login = async api => {
             localStorage.setItem('createPlaylist', 'true')
           } else {
             localStorage.removeItem('createPlaylist')
-          }
-
-          // Clear password field after successful login
-          if (passwordInput) {
-            passwordInput.value = ''
           }
 
           roomCodeLine.dataset.roomCode = roomCode
@@ -377,6 +431,22 @@ export const login = async api => {
     }
 
     loginForm.addEventListener('submit', handleSubmit)
+
+    // Nach einem Neuladen direkt in den zuletzt genutzten Raum zurueck.
+    // Ein Passwort ist dabei nicht noetig: Die Jellyfin-Sitzung haengt am
+    // Cookie, den der Server beim Verbindungsaufbau ausliest.
+    const skipAutoLogin = sessionStorage.getItem('skipAutoLogin') === 'true'
+    sessionStorage.removeItem('skipAutoLogin')
+
+    // Zeigt die Adresszeile auf einen anderen Raum als den gespeicherten
+    // (geteilter Link), bleibt das Formular stehen, damit der Name noch
+    // angepasst werden kann.
+    const roomMatchesUrl =
+      !urlRoomCode || roomCode === localStorage.getItem('roomCode')
+
+    if (!skipAutoLogin && user && roomCode && roomMatchesUrl) {
+      loginForm.requestSubmit()
+    }
   })
 }
 
