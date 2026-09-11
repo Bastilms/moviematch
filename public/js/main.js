@@ -16,14 +16,39 @@ const main = async () => {
   const swipeHistory = []
 
   // Handle connection state changes
+  let bannerCountdown = null
+
+  const stopBannerCountdown = () => {
+    if (bannerCountdown) {
+      clearInterval(bannerCountdown)
+      bannerCountdown = null
+    }
+  }
+
   api.addEventListener('connectionState', e => {
     const banner = document.querySelector('.js-connection-banner')
     if (!banner) return
 
     if (e.data === 'offline' || e.data === 'reconnecting') {
-      banner.textContent = document.body.dataset['i18nStatusOffline']
+      // Der Countdown zeigt, wann der nächste Versuch anläuft, damit das
+      // Banner nicht wie ein eingefrorener Zustand wirkt.
+      const zeigeStatus = () => {
+        const sekunden = api.secondsUntilRetry()
+        banner.textContent =
+          sekunden === null || sekunden <= 0
+            ? document.body.dataset['i18nStatusOffline']
+            : document.body.dataset['i18nStatusOfflineRetry'].replace(
+                '$SECONDS',
+                String(sekunden),
+              )
+      }
+
+      zeigeStatus()
       banner.removeAttribute('hidden')
+      stopBannerCountdown()
+      bannerCountdown = setInterval(zeigeStatus, 1000)
     } else if (e.data === 'online') {
+      stopBannerCountdown()
       banner.textContent = document.body.dataset['i18nStatusReconnected']
       banner.removeAttribute('hidden')
       // Hide banner after 2 seconds

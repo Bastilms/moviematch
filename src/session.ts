@@ -74,11 +74,16 @@ interface WebSocketUndoMessage {
   type: 'undo'
 }
 
+interface WebSocketPingMessage {
+  type: 'ping'
+}
+
 type WebSocketMessage =
   | WebSocketLoginMessage
   | WebSocketResponseMessage
   | WebSocketNextBatchMessage
   | WebSocketUndoMessage
+  | WebSocketPingMessage
 
 interface SessionUser {
   id: number
@@ -139,6 +144,15 @@ class Session {
         return
       }
       switch (decodedMessage.type) {
+        case 'ping': {
+          // Der Browser prüft damit, ob die Verbindung noch steht. Ohne
+          // diese Antwort kann er einen stillen Abbruch nicht erkennen.
+          const ws = this.userConnections.get(userId)
+          if (ws && !ws.isClosed) {
+            ws.send(JSON.stringify({ type: 'pong' }))
+          }
+          break
+        }
         case 'nextBatch': {
           log.debug(`${name} asked for the next batch of movies`)
           await this.sendNextBatch(userId)

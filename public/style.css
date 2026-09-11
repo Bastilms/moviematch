@@ -71,17 +71,19 @@ body {
 
 .connection-banner {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
+  top: calc(env(safe-area-inset-top, 0) + 0.75rem);
+  left: 50%;
   z-index: 1000;
-  padding: calc(env(safe-area-inset-top, 0) + 0.75rem)
-    env(safe-area-inset-right, 0) 0.75rem env(safe-area-inset-left, 0);
+  max-width: calc(100% - 2rem);
+  padding: 0.5rem 1.125rem;
+  border-radius: 999px;
   text-align: center;
   font-size: 0.875rem;
   font-weight: 600;
   background-color: var(--indigo);
   color: var(--bone);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 45%);
+  transform: translateX(-50%);
   animation: slide-down 300ms ease-in-out;
 }
 
@@ -92,12 +94,12 @@ body {
 @keyframes slide-down {
   from {
     opacity: 0;
-    transform: translateY(-100%);
+    transform: translate(-50%, -1rem);
   }
 
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translate(-50%, 0);
   }
 }
 

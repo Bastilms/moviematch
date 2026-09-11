@@ -1,3 +1,7 @@
+// Abstand zwischen zwei Lebenszeichen und Wartezeit auf die Antwort.
+const HEARTBEAT_INTERVAL_MS = 20000
+const PONG_TIMEOUT_MS = 10000
+
 export class MovieMatchAPI extends EventTarget {
   constructor() {
     super()
@@ -10,13 +14,16 @@ export class MovieMatchAPI extends EventTarget {
     this._movieList = []
     this._isUnloading = false
     this._reconnectAttempts = 0
-    this._maxReconnectAttempts = Infinity
     this._messageQueue = []
     this._maxQueueSize = 200
     this._pendingBatchRequest = null
     this._lastLoginCredentials = null
     this._connectionState = 'offline'
     this._isFirstLogin = true
+    this._heartbeatTimer = null
+    this._pongTimer = null
+    this._nextRetryAt = null
+    this._reconnectTimer = null
 
     window.addEventListener('beforeunload', () => {
       this._isUnloading = true
@@ -42,18 +49,33 @@ export class MovieMatchAPI extends EventTarget {
   handleOpen(socket) {
     if (socket && socket !== this.socket) return
 
+    // Steht eine Verbindung, ist ein noch geplanter Versuch hinfaellig.
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer)
+      this._reconnectTimer = null
+    }
+
+    // Nach einem Verbindungsverlust gilt die Lage erst dann als bereinigt,
+    // wenn auch die Anmeldung wieder steht. Der Server kann die Anmeldung
+    // noch ablehnen, solange er die alte, tote Verbindung haelt. Wuerde hier
+    // schon "online" gemeldet, sprungen Banner und Wartezeit bei jedem
+    // Versuch zurueck.
+    if (!this._isFirstLogin && this._lastLoginCredentials) {
+      this.dispatchEvent(new Event('connectionOpen'))
+      this.performLogin()
+      return
+    }
+
     this._reconnectAttempts = 0
+    this._nextRetryAt = null
     this.setConnectionState('online')
     this.dispatchEvent(new Event('connectionOpen'))
-
-    // Perform auto-login on reconnection (but not on initial connection)
-    if (!this._isFirstLogin && this._lastLoginCredentials) {
-      this.performLogin()
-    }
   }
 
   handleClose(socket) {
-    if (socket && socket !== this.socket) return
+    if (socket && (socket !== this.socket || socket._abandoned)) return
+
+    this.stopHeartbeat()
 
     if (!this._isUnloading) {
       this.setConnectionState('offline')
@@ -62,7 +84,9 @@ export class MovieMatchAPI extends EventTarget {
   }
 
   handleError(socket) {
-    if (socket && socket !== this.socket) return
+    if (socket && (socket !== this.socket || socket._abandoned)) return
+
+    this.stopHeartbeat()
 
     if (!this._isUnloading) {
       this.setConnectionState('offline')
@@ -73,17 +97,101 @@ export class MovieMatchAPI extends EventTarget {
   scheduleReconnect() {
     if (this._isUnloading) return
 
+    // Ein fehlgeschlagener Verbindungsaufbau meldet erst "error" und dann
+    // "close". Ohne diese Sperre planen beide je einen Versuch, es liefen
+    // also doppelt so viele wie vorgesehen — und der Countdown im Banner
+    // wuerde bei jedem Planen zurueckspringen.
+    if (this._reconnectTimer) return
+
     const delays = [1000, 2000, 4000, 8000, 15000]
     const delay = delays[Math.min(this._reconnectAttempts, delays.length - 1)]
     this._reconnectAttempts += 1
 
+    this._nextRetryAt = Date.now() + delay
+
     this.setConnectionState('reconnecting')
 
-    setTimeout(() => {
+    this._reconnectTimer = setTimeout(() => {
+      this._reconnectTimer = null
       if (!this._isUnloading) {
         this.connect()
       }
     }, delay)
+  }
+
+  /**
+   * Sendet regelmäßig ein Lebenszeichen. Bleibt die Antwort aus, gilt die
+   * Verbindung als tot und wird geschlossen, damit der Wiederaufbau anläuft.
+   * Ohne diese Prüfung bleibt ein stiller Abbruch unbemerkt: Der Browser
+   * feuert dann kein close-Ereignis.
+   */
+  startHeartbeat() {
+    this.stopHeartbeat()
+
+    this._heartbeatTimer = setInterval(() => {
+      if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+        return
+      }
+
+      this.socket.send(JSON.stringify({ type: 'ping' }))
+
+      this._pongTimer = setTimeout(() => {
+        // Keine Antwort: Die Verbindung ist tot, auch wenn der Browser das
+        // noch nicht bemerkt hat.
+        this.stopHeartbeat()
+        this.abandonSocket()
+      }, PONG_TIMEOUT_MS)
+    }, HEARTBEAT_INTERVAL_MS)
+  }
+
+  stopHeartbeat() {
+    if (this._heartbeatTimer) {
+      clearInterval(this._heartbeatTimer)
+      this._heartbeatTimer = null
+    }
+    if (this._pongTimer) {
+      clearTimeout(this._pongTimer)
+      this._pongTimer = null
+    }
+  }
+
+  /**
+   * Gibt die aktuelle Verbindung als verloren auf und stoesst den Wiederaufbau
+   * an, ohne das close-Ereignis abzuwarten. Auf einer toten Leitung bestaetigt
+   * die Gegenseite den Schliess-Rahmen nicht mehr; close() bliebe dann dauerhaft
+   * im Zustand CLOSING haengen und das Ereignis kaeme nie.
+   */
+  abandonSocket() {
+    const verloren = this.socket
+    if (!verloren) {
+      return
+    }
+
+    // Merkzeichen, damit ein spaeter doch noch eintreffendes close- oder
+    // error-Ereignis dieser Verbindung keinen zweiten Wiederaufbau ausloest.
+    verloren._abandoned = true
+
+    try {
+      verloren.close()
+    } catch {
+      // Bereits geschlossen; der Wiederaufbau laeuft trotzdem an.
+    }
+
+    if (!this._isUnloading) {
+      this.setConnectionState('offline')
+      this.scheduleReconnect()
+    }
+  }
+
+  /**
+   * Sekunden bis zum nächsten Verbindungsversuch, oder null wenn keiner
+   * geplant ist. Die Oberfläche zeigt damit einen Countdown an.
+   */
+  secondsUntilRetry() {
+    if (this._nextRetryAt === null) {
+      return null
+    }
+    return Math.max(0, Math.ceil((this._nextRetryAt - Date.now()) / 1000))
   }
 
   /**
@@ -191,7 +299,6 @@ export class MovieMatchAPI extends EventTarget {
           } else {
             const reason = e.data.reason || `${user} is already logged in.`
             this._lastLoginCredentials = null
-            this._maxReconnectAttempts = 0
             reject(new Error(reason))
           }
         },
@@ -215,6 +322,14 @@ export class MovieMatchAPI extends EventTarget {
         this.flushMessageQueue()
         break
       }
+      case 'pong': {
+        // Die Verbindung lebt.
+        if (this._pongTimer) {
+          clearTimeout(this._pongTimer)
+          this._pongTimer = null
+        }
+        break
+      }
       case 'match': {
         return this.dispatchEvent(
           new MessageEvent('match', { data: data.payload }),
@@ -224,6 +339,8 @@ export class MovieMatchAPI extends EventTarget {
         this._movieList = data.payload.movies ?? []
 
         if (data.payload.success) {
+          // Erst ab jetzt beantwortet der Server Lebenszeichen.
+          this.startHeartbeat()
           if (this._isFirstLogin) {
             // This is the initial login
             this._isFirstLogin = false
@@ -232,6 +349,10 @@ export class MovieMatchAPI extends EventTarget {
             )
           } else {
             // This is a reconnection login
+            // Jetzt erst ist der Verbindungsverlust wirklich ueberstanden.
+            this._reconnectAttempts = 0
+            this._nextRetryAt = null
+            this.setConnectionState('online')
             this.dispatchEvent(
               new MessageEvent('reconnected', { data: data.payload }),
             )
@@ -246,13 +367,20 @@ export class MovieMatchAPI extends EventTarget {
               )
             }
           }
-        } else {
-          // Login failed
+        } else if (this._isFirstLogin) {
+          // Die erste Anmeldung wurde abgewiesen. Das ist eine echte Absage
+          // an den Nutzer (Name belegt, Eingabe falsch) und wird angezeigt.
           this._lastLoginCredentials = null
-          this._maxReconnectAttempts = 0
           this.dispatchEvent(
             new MessageEvent('loginResponse', { data: data.payload }),
           )
+        } else {
+          // Waehrend eines Wiederaufbaus: Der Server haelt womoeglich noch die
+          // alte, tote Verbindung und weist deshalb mit "is already logged in"
+          // ab. Das gibt sich, sobald sein Herzschlag sie wegraeumt. Also
+          // nicht aufgeben, sondern spaeter erneut versuchen.
+          this.stopHeartbeat()
+          this.abandonSocket()
         }
         break
       }

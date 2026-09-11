@@ -24,5 +24,6 @@
   "LIST_CONJUNCTION": "en",
   "CARD_NO_SUMMARY": "Geen beschrijving beschikbaar.",
   "STATUS_OFFLINE": "Verbinding verbroken — opnieuw verbinden…",
+  "STATUS_OFFLINE_RETRY": "Offline — opnieuw proberen over $SECONDS s",
   "STATUS_RECONNECTED": "Weer online"
 }

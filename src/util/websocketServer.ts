@@ -8,6 +8,12 @@ import type { JellyfinSession } from './jellyfinUser.js'
 
 export class WebSocketError extends Error {}
 
+// Alle 30 Sekunden wird geprüft, ob die Gegenstellen noch antworten. Ohne
+// diese Prüfung bleiben nach einem stillen Verbindungsabbruch halboffene
+// Verbindungen stehen; ein Wiederanmelden desselben Namens wird dann mit
+// "is already logged in" abgewiesen.
+const HEARTBEAT_INTERVAL = 30 * 1000
+
 interface Options {
   onConnection: (ws: WebSocket) => void
   onError: (error: Error) => void
@@ -20,6 +26,7 @@ export class WebSocketServer {
   private options: Options
   private connections: Set<WebSocket> = new Set()
   private messageRateLimiterFn?: (ip: string) => boolean
+  private heartbeatTimer: NodeJS.Timeout | null = null
 
   constructor(options: Options) {
     this.options = options
@@ -27,6 +34,21 @@ export class WebSocketServer {
     // Limit payload size to 64 KiB to protect against DoS attacks via oversized messages.
     // Legitimate messages (login, response, nextBatch) are much smaller.
     this.wss = new WSServer({ noServer: true, maxPayload: 64 * 1024 })
+
+    this.heartbeatTimer = setInterval(() => {
+      for (const connection of this.connections) {
+        if (!connection.isAlive) {
+          // Auf den vorigen Ping kam keine Antwort.
+          connection.terminate()
+          continue
+        }
+        connection.isAlive = false
+        connection.ping()
+      }
+    }, HEARTBEAT_INTERVAL)
+
+    // Der Zeitgeber soll den Prozess nicht am Leben halten.
+    this.heartbeatTimer.unref()
   }
 
   async handleUpgrade(
@@ -64,6 +86,10 @@ export class WebSocketServer {
   }
 
   closeAll(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer)
+      this.heartbeatTimer = null
+    }
     for (const connection of this.connections) {
       connection.close()
     }
@@ -86,6 +112,7 @@ export class WebSocket extends EventEmitter {
   public jellyfin: StoredJellyfinSession | null = null
   public playlistEnabled: boolean = false
   public playlistId: string | null = null
+  public isAlive: boolean = true
 
   constructor(ws: WSWebSocket, onError: (err: Error) => void) {
     super()
@@ -125,6 +152,8 @@ export class WebSocket extends EventEmitter {
     })
 
     ws.on('pong', (data: Buffer) => {
+      // Die Gegenseite hat geantwortet, die Verbindung lebt noch.
+      this.isAlive = true
       this.emit('pong', data)
     })
   }
@@ -142,6 +171,21 @@ export class WebSocket extends EventEmitter {
     }
     this._isClosed = true
     this.ws.close(code, reason)
+  }
+
+  ping(): void {
+    if (this._isClosed) {
+      return
+    }
+    try {
+      this.ws.ping()
+    } catch {
+      // Eine Verbindung, die sich nicht mehr anpingen lässt, ist ohnehin tot.
+    }
+  }
+
+  terminate(): void {
+    this.ws.terminate()
   }
 
   get isClosed(): boolean {

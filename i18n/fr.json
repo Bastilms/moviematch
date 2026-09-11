@@ -24,5 +24,6 @@
   "LIST_CONJUNCTION": "et",
   "CARD_NO_SUMMARY": "Aucune description disponible.",
   "STATUS_OFFLINE": "Connexion perdue — reconnexion…",
+  "STATUS_OFFLINE_RETRY": "Hors ligne — nouvelle tentative dans $SECONDS s",
   "STATUS_RECONNECTED": "De nouveau en ligne"
 }
