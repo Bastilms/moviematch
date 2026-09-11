@@ -1,4 +1,4 @@
-import { JELLYFIN_URL, getVersion } from '../config.js'
+import { JELLYFIN_URL, JELLYFIN_API_KEY, getVersion } from '../config.js'
 import * as log from './logger.js'
 
 /**
@@ -168,5 +168,80 @@ export async function logoutJellyfinUser(accessToken: string): Promise<void> {
     }
   } catch (err) {
     log.debug(`Failed to reach Jellyfin logout endpoint: ${err}`)
+  }
+}
+
+export interface JellyfinAvatar {
+  body: Uint8Array
+  contentType: string
+}
+
+/**
+ * Laedt das Profilbild eines Jellyfin-Benutzers ueber den Zugriffsschluessel
+ * des Servers. Gibt null zurueck, wenn kein Bild hinterlegt ist, der
+ * Medienserver nicht antwortet oder etwas anderes als ein Bild zurueckkommt.
+ */
+export async function fetchJellyfinAvatar(
+  userId: string,
+  maxHeight: number,
+): Promise<JellyfinAvatar | null> {
+  // Die Kennung stammt aus der Sitzung und wird unten in einen URL-Pfad
+  // eingesetzt. Deshalb vorher streng pruefen.
+  assertJellyfinId(userId, 'user id')
+
+  const url = new URL(`${JELLYFIN_URL}/Users/${userId}/Images/Primary`)
+  url.searchParams.set('maxHeight', String(maxHeight))
+
+  const headers = {
+    accept: 'image/*',
+    Authorization: `MediaBrowser Token="${JELLYFIN_API_KEY}", Client="MovieMatch", Device="MovieMatch", DeviceId="moviematch", Version="${getVersion()}"`,
+  }
+
+  let response: Response
+  try {
+    response = await fetch(url.toString(), { headers })
+  } catch (err) {
+    log.debug(`Failed to reach Jellyfin avatar endpoint: ${err}`)
+    return null
+  }
+
+  if (!response.ok) {
+    // 404 ist der Normalfall fuer Benutzer ohne Profilbild.
+    log.debug(`Jellyfin avatar request returned ${response.status}`)
+    return null
+  }
+
+  // Nur Rasterbilder weiterreichen. "image/svg+xml" beginnt ebenfalls mit
+  // "image/", ist aber ein XML-Dokument, das Skripte enthalten kann.
+  const ALLOWED_IMAGE_TYPES = [
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/gif',
+    'image/avif',
+  ]
+
+  const contentType = response.headers.get('content-type') ?? ''
+  // Der Medienserver haengt mitunter Angaben wie "; charset=utf-8" an.
+  const baseContentType = contentType.split(';')[0].trim().toLowerCase()
+
+  if (!ALLOWED_IMAGE_TYPES.includes(baseContentType)) {
+    log.debug(`Jellyfin avatar has unexpected content type: ${contentType}`)
+    return null
+  }
+
+  const buffer = await response.arrayBuffer()
+
+  // Obergrenze, damit ein fehlerhafter oder boesartiger Medienserver den
+  // Arbeitsspeicher nicht mit einer riesigen Antwort belasten kann.
+  const MAX_AVATAR_BYTES = 2 * 1024 * 1024
+  if (buffer.byteLength > MAX_AVATAR_BYTES) {
+    log.debug(`Jellyfin avatar too large: ${buffer.byteLength} bytes`)
+    return null
+  }
+
+  return {
+    body: new Uint8Array(buffer),
+    contentType: baseContentType,
   }
 }

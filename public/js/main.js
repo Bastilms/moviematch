@@ -193,6 +193,12 @@ export const login = async api => {
   const exportCsvLink = document.querySelector('.js-export-csv')
   const exportLikesLink = document.querySelector('.js-export-likes')
   const changeRoomButton = document.querySelector('.js-change-room')
+  const userMenu = document.querySelector('.js-user-menu')
+  const userMenuButton = document.querySelector('.js-user-menu-button')
+  const userAvatar = document.querySelector('.js-user-avatar')
+  const userInitials = document.querySelector('.js-user-initials')
+  const userMenuDropdown = document.querySelector('.js-user-menu-dropdown')
+  const logoutButton = document.querySelector('.js-logout-button')
 
   const isJellyfin = document.body.dataset.backend === 'jellyfin'
 
@@ -328,6 +334,93 @@ export const login = async api => {
     })
   }
 
+  // Das Benutzermenue zeigt das Jellyfin-Profilbild. Ist keines hinterlegt,
+  // antwortet der Server mit 404 und die Initiale bleibt stehen.
+  const showUserMenu = userName => {
+    if (!userMenu) {
+      return
+    }
+
+    if (userInitials) {
+      userInitials.textContent = userName.trim().charAt(0).toUpperCase()
+    }
+
+    if (userAvatar) {
+      userAvatar.addEventListener(
+        'load',
+        () => {
+          userAvatar.removeAttribute('hidden')
+          userInitials?.setAttribute('hidden', '')
+        },
+        { once: true },
+      )
+      const basePath = document.body.dataset.basePath || ''
+      userAvatar.src = `${basePath}/api/jellyfin-avatar`
+    }
+
+    userMenu.removeAttribute('hidden')
+  }
+
+  const closeUserMenu = () => {
+    userMenuDropdown?.setAttribute('hidden', '')
+    userMenuButton?.setAttribute('aria-expanded', 'false')
+  }
+
+  if (userMenuButton && userMenuDropdown) {
+    userMenuButton.addEventListener('click', e => {
+      // Sonst wuerde der Klick sofort wieder beim document ankommen und
+      // das gerade geoeffnete Menue schliessen.
+      e.stopPropagation()
+
+      if (userMenuDropdown.hasAttribute('hidden')) {
+        userMenuDropdown.removeAttribute('hidden')
+        userMenuButton.setAttribute('aria-expanded', 'true')
+      } else {
+        closeUserMenu()
+      }
+    })
+
+    document.addEventListener('click', closeUserMenu)
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        closeUserMenu()
+      }
+    })
+  }
+
+  if (logoutButton) {
+    logoutButton.addEventListener('click', async () => {
+      const basePath = document.body.dataset.basePath || ''
+
+      let response
+      try {
+        response = await fetch(`${basePath}/api/jellyfin-logout`, {
+          method: 'POST',
+          credentials: 'same-origin',
+        })
+      } catch {
+        alert(document.body.dataset['i18nLoginErrorUnreachable'])
+        return
+      }
+
+      if (!response.ok) {
+        alert(document.body.dataset['i18nLoginErrorUnreachable'])
+        return
+      }
+
+      // Name und Raum werden vergessen, damit auf einem geteilten Geraet
+      // nichts von der vorherigen Person stehen bleibt.
+      localStorage.removeItem('user')
+      localStorage.removeItem('roomCode')
+      sessionStorage.setItem('skipAutoLogin', 'true')
+
+      const target = new URL(window.location.href)
+      target.search = ''
+      target.hash = ''
+      window.location.replace(target.toString())
+    })
+  }
+
   return new Promise(resolve => {
     const handleSubmit = async e => {
       e.preventDefault()
@@ -386,6 +479,11 @@ export const login = async api => {
           }
 
           roomCodeLine.dataset.roomCode = roomCode
+
+          // Das Benutzermenue erscheint nur bei bestaetigter Jellyfin-Anmeldung.
+          if (data.jellyfinAuthenticated === true) {
+            showUserMenu(name)
+          }
 
           // Set CSV export link
           if (exportCsvLink) {

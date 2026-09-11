@@ -750,3 +750,85 @@ footer {
     border-color: var(--muted);
   }
 }
+
+.user-menu {
+  position: fixed;
+  top: var(--s2);
+  right: var(--s2);
+  z-index: 10;
+}
+
+.user-menu[hidden] {
+  display: none;
+}
+
+.user-menu-button {
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 2px solid var(--edge-strong);
+  border-radius: 50%;
+  background: var(--ink-raised);
+  color: var(--bone);
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+.user-menu-button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.user-avatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.user-avatar[hidden] {
+  display: none;
+}
+
+.user-menu-dropdown {
+  position: absolute;
+  top: calc(100% + var(--s1));
+  right: 0;
+  min-width: 10rem;
+  padding: var(--s1);
+  border: 1px solid var(--edge);
+  border-radius: 0.5rem;
+  background: var(--ink-raised);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+}
+
+.user-menu-dropdown[hidden] {
+  display: none;
+}
+
+.user-menu-item {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: none;
+  border-radius: 0.35rem;
+  background: none;
+  color: var(--bone);
+  font-size: 1rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.user-menu-item:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: -2px;
+}
+
+@media screen and (hover: hover) {
+  .user-menu-item:hover {
+    background: var(--edge);
+  }
+}

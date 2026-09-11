@@ -38,6 +38,7 @@ import {
 import {
   authenticateJellyfinUser,
   logoutJellyfinUser,
+  fetchJellyfinAvatar,
 } from './util/jellyfinUser.js'
 
 const backend = getBackend()
@@ -360,6 +361,58 @@ const server = http.createServer(async (req, res) => {
 
       res.writeHead(204)
       res.end()
+      return
+    } else if (url === '/api/jellyfin-avatar') {
+      // GET /api/jellyfin-avatar endpoint
+      if (req.method !== 'GET') {
+        res.writeHead(405, { 'content-type': 'text/plain' })
+        res.end('Method Not Allowed')
+        return
+      }
+
+      // Nur wenn Jellyfin-Backend aktiviert ist
+      if (BACKEND !== 'jellyfin') {
+        res.writeHead(404, { 'content-type': 'text/plain' })
+        res.end('Not Found')
+        return
+      }
+
+      // Der Benutzer wird ausschliesslich aus der eigenen Sitzung bestimmt.
+      // Der Aufrufer kann keine fremde Kennung angeben.
+      const cookies = parseCookies(req.headers.cookie)
+      const sessionId = cookies.mm_session
+      const storedSession = sessionId ? getStoredSession(sessionId) : null
+
+      if (!storedSession) {
+        res.writeHead(404, { 'content-type': 'text/plain' })
+        res.end('Not Found')
+        return
+      }
+
+      try {
+        const avatar = await fetchJellyfinAvatar(storedSession.userId, 96)
+
+        if (!avatar) {
+          res.writeHead(404, { 'content-type': 'text/plain' })
+          res.end('Not Found')
+          return
+        }
+
+        res.writeHead(200, {
+          'content-type': avatar.contentType,
+          // Die Antwort haengt an der Sitzung. Wird sie zwischengespeichert,
+          // liefert der Browser das Profilbild auch nach dem Abmelden noch
+          // aus — gemessen ueber fuenf Minuten hinweg. Deshalb gar nicht erst
+          // ablegen.
+          'cache-control': 'no-store',
+          'x-content-type-options': 'nosniff',
+        })
+        res.end(Buffer.from(avatar.body))
+      } catch (err) {
+        log.error(`Failed to load Jellyfin avatar: ${err}`)
+        res.writeHead(404, { 'content-type': 'text/plain' })
+        res.end('Not Found')
+      }
       return
     } else if (url.match(/^\/api\/rooms\/([0-9A-Za-z]+)\/likes\.csv/)) {
       // User likes export endpoint

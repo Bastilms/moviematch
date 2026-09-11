@@ -111,6 +111,27 @@
     data-backend="${BACKEND}"
   >
     <div class="connection-banner js-connection-banner" role="status" aria-live="polite" hidden></div>
+    <div class="user-menu js-user-menu" hidden>
+      <button
+        type="button"
+        class="user-menu-button js-user-menu-button"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        aria-label="${USER_MENU_LABEL}"
+      >
+        <img class="user-avatar js-user-avatar" alt="" hidden />
+        <span class="user-initials js-user-initials" aria-hidden="true"></span>
+      </button>
+      <div class="user-menu-dropdown js-user-menu-dropdown" role="menu" hidden>
+        <button
+          type="button"
+          role="menuitem"
+          class="user-menu-item js-logout-button"
+        >
+          ${USER_MENU_LOGOUT}
+        </button>
+      </div>
+    </div>
     <main class="app">
       <section class="login-section">
         <img

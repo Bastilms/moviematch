@@ -16,6 +16,8 @@
   "MATCHES_SECTION_CARD_LIKERS": "$USERS want to watch $MOVIE",
   "MATCHES_SECTION_SHARE": "Share link",
   "MATCHES_SECTION_CHANGE_ROOM": "Change room",
+  "USER_MENU_LABEL": "User menu",
+  "USER_MENU_LOGOUT": "Log out",
   "MATCHES_SECTION_SHARE_COPIED": "Link copied!",
   "MATCHES_SECTION_EXPORT_CSV": "Export CSV",
   "MATCHES_SECTION_EXPORT_LIKES": "Export my likes",
