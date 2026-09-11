@@ -4,6 +4,7 @@ import { MOVIE_BATCH_SIZE, BACKEND } from './config.js'
 import { WebSocket } from './util/websocketServer.js'
 import { authenticateJellyfinUser } from './util/jellyfinUser.js'
 import type { JellyfinSession } from './util/jellyfinUser.js'
+import type { StoredJellyfinSession } from './util/websocketServer.js'
 import { syncPlaylist } from './util/jellyfinPlaylist.js'
 import type { MediaItem } from './backends/types.js'
 import {
@@ -411,6 +412,11 @@ class Session {
       return
     }
 
+    // Ensure accessToken is present (not null)
+    if (ws.jellyfin.accessToken === null) {
+      return
+    }
+
     this.playlistSyncInProgress.set(userId, true)
     try {
       const matchGuids = Array.from(this.matchGuids).sort()
@@ -420,8 +426,15 @@ class Session {
           ? `${participantNames.join(', ')} – ${this.roomCode}`
           : this.roomCode
 
+      // Now we're guaranteed that accessToken is not null
+      const sessionWithToken: JellyfinSession & { accessToken: string } = {
+        userId: ws.jellyfin.userId,
+        userName: ws.jellyfin.userName,
+        accessToken: ws.jellyfin.accessToken,
+      }
+
       const playlistId = await syncPlaylist({
-        session: ws.jellyfin,
+        session: sessionWithToken,
         playlistName,
         itemIds: matchGuids,
         knownPlaylistId: ws.playlistId,
@@ -507,16 +520,32 @@ export const handleLogin = (ws: WebSocket): Promise<SessionUser> => {
             return
           }
 
-          // Extract password and validate it's not logged
-          const password = (data.payload as any).password
-          const hasPassword =
-            typeof password === 'string' && password.length > 0
+          // Das Passwort-Feld wird nicht mehr ausgewertet.
+          // Die Anmeldung läuft ausschließlich über den HTTP-Endpunkt /api/jellyfin-login
 
           // Validate inputs
           let roomCode = (data.payload.roomCode ?? '').trim().toUpperCase()
           let name = (data.payload.name ?? '').trim()
           let jellyfinAuthenticated = false
-          let jellyfinSession: JellyfinSession | null = null
+          let jellyfinSession: StoredJellyfinSession | null = null
+
+          // Prüfe, ob eine Sitzung an der Verbindung hinterlegt ist
+          if (ws.jellyfin) {
+            // Der Name muss mit dem Sitzungsnamen übereinstimmen (getrimmt, case-insensitive)
+            const sessionNameNormalized = ws.jellyfin.userName
+              .trim()
+              .toLowerCase()
+            const inputNameNormalized = name.toLowerCase()
+
+            if (sessionNameNormalized === inputNameNormalized) {
+              // Names stimmen überein: Sitzung nutzen
+              jellyfinSession = ws.jellyfin
+              jellyfinAuthenticated = true
+              // Den Namen aus der Sitzung verwenden (bereits korrekt setzen)
+              name = ws.jellyfin.userName
+            }
+            // Andernfalls: die Sitzung für diese Anmeldung ignorieren
+          }
 
           // Validate roomCode format
           if (!/^[0-9A-Z]{4}$/.test(roomCode)) {
@@ -535,8 +564,8 @@ export const handleLogin = (ws: WebSocket): Promise<SessionUser> => {
             return
           }
 
-          // Validate name (initial length check for non-Jellyfin logins)
-          if (!hasPassword && (name.length === 0 || name.length > 50)) {
+          // Validate name length
+          if (name.length === 0 || name.length > 50) {
             log.info(
               `Login rejected: invalid name length (${name.length} chars)`,
             )
@@ -552,83 +581,6 @@ export const handleLogin = (ws: WebSocket): Promise<SessionUser> => {
             }
             ws.send(JSON.stringify(response))
             return
-          }
-
-          // Extract createPlaylist flag (only relevant with Jellyfin auth)
-          const createPlaylist =
-            typeof (data.payload as any).createPlaylist === 'boolean'
-              ? (data.payload as any).createPlaylist
-              : false
-
-          // Handle Jellyfin authentication if password is provided
-          if (hasPassword) {
-            // Check if Jellyfin backend is enabled
-            if (BACKEND !== 'jellyfin') {
-              log.info(
-                'Login rejected: Jellyfin login attempted but backend is not jellyfin',
-              )
-              const response: WebSocketLoginResponseMessage = {
-                type: 'loginResponse',
-                payload: {
-                  success: false,
-                  reason: 'Jellyfin login is not available with this backend.',
-                },
-              }
-              ws.send(JSON.stringify(response))
-              return
-            }
-
-            // Attempt Jellyfin authentication
-            // Use the input name for Jellyfin, not trimmed yet for auth
-            try {
-              jellyfinSession = await authenticateJellyfinUser(name, password)
-              // Use the Jellyfin-returned username for consistency
-              name = jellyfinSession.userName
-              jellyfinAuthenticated = true
-
-              // Validate the returned username
-              name = name.trim()
-              if (name.length === 0 || name.length > 50) {
-                log.warning(
-                  'Jellyfin returned username with invalid length, rejecting login',
-                )
-                const response: WebSocketLoginResponseMessage = {
-                  type: 'loginResponse',
-                  payload: {
-                    success: false,
-                    reason: 'Jellyfin login failed.',
-                  },
-                }
-                ws.send(JSON.stringify(response))
-                return
-              }
-            } catch (err) {
-              // Log error but not the password
-              log.error('Jellyfin authentication failed:', err)
-              const response: WebSocketLoginResponseMessage = {
-                type: 'loginResponse',
-                payload: {
-                  success: false,
-                  reason: 'Jellyfin login failed.',
-                },
-              }
-              ws.send(JSON.stringify(response))
-              return
-            }
-          } else {
-            // Non-Jellyfin login: validate name already checked above
-            if (name.length === 0) {
-              log.info('Login rejected: empty name')
-              const response: WebSocketLoginResponseMessage = {
-                type: 'loginResponse',
-                payload: {
-                  success: false,
-                  reason: 'Name cannot be empty.',
-                },
-              }
-              ws.send(JSON.stringify(response))
-              return
-            }
           }
 
           // Check for Jellyfin account lock on this name
@@ -728,10 +680,14 @@ export const handleLogin = (ws: WebSocket): Promise<SessionUser> => {
 
           log.debug(`User ${name} (id=${user.id}) logged in`)
 
-          // Store Jellyfin session in WebSocket connection (memory only)
-          // Only enable playlist if authenticated AND createPlaylist is true
-          if (jellyfinSession && createPlaylist) {
+          // Store Jellyfin session in WebSocket connection (if not already set from cookie)
+          // Only enable playlist if authenticated AND accessToken is present (not null)
+          if (jellyfinSession && !ws.jellyfin) {
             ws.jellyfin = jellyfinSession
+          }
+
+          // Enable playlist only if we have a Jellyfin session with an accessToken
+          if (ws.jellyfin && ws.jellyfin.accessToken !== null) {
             ws.playlistEnabled = true
           }
 

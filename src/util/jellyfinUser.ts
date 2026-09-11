@@ -145,3 +145,28 @@ export async function authenticateJellyfinUser(
     accessToken,
   }
 }
+
+/**
+ * Beendet die Jellyfin-Anmeldung zu diesem Zugriffstoken.
+ * Fehler werden geschluckt.
+ */
+export async function logoutJellyfinUser(accessToken: string): Promise<void> {
+  const url = new URL(`${JELLYFIN_URL}/Sessions/Logout`)
+
+  const headers = {
+    Authorization: `MediaBrowser Token="${accessToken}", Client="MovieMatch", Device="MovieMatch", DeviceId="moviematch", Version="${getVersion()}"`,
+  }
+
+  try {
+    const response = await fetch(url.toString(), {
+      method: 'POST',
+      headers,
+    })
+
+    if (!response.ok) {
+      log.debug(`Failed to logout Jellyfin session: HTTP ${response.status}`)
+    }
+  } catch (err) {
+    log.debug(`Failed to reach Jellyfin logout endpoint: ${err}`)
+  }
+}

@@ -16,5 +16,7 @@
   "MATCHES_SECTION_EXPORT_CSV": "CSV exporteren",
   "MATCHES_SECTION_EXPORT_LIKES": "Mijn likes exporteren",
   "LIST_CONJUNCTION": "en",
-  "CARD_NO_SUMMARY": "Geen beschrijving beschikbaar."
+  "CARD_NO_SUMMARY": "Geen beschrijving beschikbaar.",
+  "STATUS_OFFLINE": "Verbinding verbroken — opnieuw verbinden…",
+  "STATUS_RECONNECTED": "Weer online"
 }

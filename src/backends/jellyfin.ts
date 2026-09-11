@@ -303,80 +303,179 @@ export class JellyfinBackend implements MediaBackend {
     includeItemTypes?: string,
   ): Promise<JellyfinItem[]> {
     const allItems: JellyfinItem[] = []
-    let startIndex = 0
     const limit = 500
 
-    while (true) {
-      const url = new URL(`${JELLYFIN_URL}/Items`)
-      url.searchParams.set('userId', userId)
-      url.searchParams.set('parentId', viewId)
-      url.searchParams.set('recursive', 'true')
-      url.searchParams.set('fields', 'Overview,ProductionYear')
-      url.searchParams.set('sortBy', 'SortName')
-      url.searchParams.set('startIndex', String(startIndex))
-      url.searchParams.set('limit', String(limit))
+    // Max concurrent requests to avoid overwhelming the media server
+    const MAX_CONCURRENT_REQUESTS = 3
 
-      if (includeItemTypes) {
-        url.searchParams.set('includeItemTypes', includeItemTypes)
-      }
+    // Load first page
+    const firstPageUrl = new URL(`${JELLYFIN_URL}/Items`)
+    firstPageUrl.searchParams.set('userId', userId)
+    firstPageUrl.searchParams.set('parentId', viewId)
+    firstPageUrl.searchParams.set('recursive', 'true')
+    firstPageUrl.searchParams.set('fields', 'Overview,ProductionYear')
+    firstPageUrl.searchParams.set('sortBy', 'SortName')
+    firstPageUrl.searchParams.set('startIndex', '0')
+    firstPageUrl.searchParams.set('limit', String(limit))
 
-      const response = await this.fetchAuthenticated(url.toString())
+    if (includeItemTypes) {
+      firstPageUrl.searchParams.set('includeItemTypes', includeItemTypes)
+    }
 
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new JellyfinAuthError(`Authentication error: ${response.url}`)
-        } else {
-          const responseText = await response.text()
-          throw new Error(
-            `${response.url} returned ${
-              response.status
-            }: ${truncateResponseText(responseText)}`,
-          )
-        }
-      }
+    const firstPageResponse = await this.fetchAuthenticated(
+      firstPageUrl.toString(),
+    )
 
-      const data: {
-        Items?: JellyfinItem[]
-        TotalRecordCount?: number
-      } = await response.json()
-
-      if (!Array.isArray(data.Items)) {
+    if (!firstPageResponse.ok) {
+      if (firstPageResponse.status === 401) {
+        throw new JellyfinAuthError(
+          `Authentication error: ${firstPageResponse.url}`,
+        )
+      } else {
+        const responseText = await firstPageResponse.text()
         throw new Error(
-          `Unexpected response from ${response.url}: expected an "Items" array`,
+          `${firstPageResponse.url} returned ${
+            firstPageResponse.status
+          }: ${truncateResponseText(responseText)}`,
         )
       }
+    }
 
-      // Break early if server returns no items for this page
-      if (data.Items.length === 0) {
-        // If we got fewer items than expected, log a warning
-        const totalRecordCount =
-          typeof data.TotalRecordCount === 'number'
-            ? data.TotalRecordCount
-            : null
-        if (totalRecordCount !== null && allItems.length < totalRecordCount) {
-          log.warning(
-            `Jellyfin /Items stopped returning items early (viewId: ${viewId}). Loaded ${allItems.length} of ${totalRecordCount} expected items.`,
+    const firstPageData: {
+      Items?: JellyfinItem[]
+      TotalRecordCount?: number
+    } = await firstPageResponse.json()
+
+    if (!Array.isArray(firstPageData.Items)) {
+      throw new Error(
+        `Unexpected response from ${firstPageResponse.url}: expected an "Items" array`,
+      )
+    }
+
+    allItems.push(...firstPageData.Items)
+
+    // Break early if server returns no items for this page
+    if (firstPageData.Items.length === 0) {
+      const totalRecordCount =
+        typeof firstPageData.TotalRecordCount === 'number'
+          ? firstPageData.TotalRecordCount
+          : null
+      if (totalRecordCount !== null && allItems.length < totalRecordCount) {
+        log.warning(
+          `Jellyfin /Items stopped returning items early (viewId: ${viewId}). Loaded ${allItems.length} of ${totalRecordCount} expected items.`,
+        )
+      }
+      return allItems
+    }
+
+    // Validate TotalRecordCount
+    const totalRecordCount =
+      typeof firstPageData.TotalRecordCount === 'number'
+        ? firstPageData.TotalRecordCount
+        : null
+
+    if (totalRecordCount === null || allItems.length >= totalRecordCount) {
+      return allItems
+    }
+
+    // Determine remaining pages to fetch
+    // Obergrenze fuer die Zahl der Seiten. Ein fehlerhafter oder boesartiger
+    // Server kann ein beliebig grosses TotalRecordCount melden; ohne Deckel
+    // wuerden daraus Zehntausende Anfragen an den Medienserver.
+    const MAX_PAGES = 200
+
+    const remainingPages: number[] = []
+    for (
+      let startIndex = limit;
+      startIndex < totalRecordCount && remainingPages.length < MAX_PAGES;
+      startIndex += limit
+    ) {
+      remainingPages.push(startIndex)
+    }
+
+    if (remainingPages.length >= MAX_PAGES) {
+      log.warning(
+        `Jellyfin /Items reported ${totalRecordCount} items for view ${viewId}, which exceeds the page limit. Loading only the first ${(MAX_PAGES + 1) * limit} titles.`,
+      )
+    }
+
+    // Load remaining pages in parallel with max concurrent requests
+    const pageResults = new Map<number, JellyfinItem[]>()
+    let hitEmptyPage = false
+
+    for (let i = 0; i < remainingPages.length; i += MAX_CONCURRENT_REQUESTS) {
+      // Sobald eine Seite leer zurueckkam, liefert der Server nichts mehr.
+      // Weitere Seiten abzufragen waere sinnlos und wuerde den Medienserver
+      // unnoetig belasten - genau das war die urspruengliche Endlosschleife.
+      if (hitEmptyPage) {
+        break
+      }
+
+      const batch = remainingPages.slice(i, i + MAX_CONCURRENT_REQUESTS)
+      const promises = batch.map(async startIndex => {
+        const url = new URL(`${JELLYFIN_URL}/Items`)
+        url.searchParams.set('userId', userId)
+        url.searchParams.set('parentId', viewId)
+        url.searchParams.set('recursive', 'true')
+        url.searchParams.set('fields', 'Overview,ProductionYear')
+        url.searchParams.set('sortBy', 'SortName')
+        url.searchParams.set('startIndex', String(startIndex))
+        url.searchParams.set('limit', String(limit))
+
+        if (includeItemTypes) {
+          url.searchParams.set('includeItemTypes', includeItemTypes)
+        }
+
+        const response = await this.fetchAuthenticated(url.toString())
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            throw new JellyfinAuthError(`Authentication error: ${response.url}`)
+          } else {
+            const responseText = await response.text()
+            throw new Error(
+              `${response.url} returned ${
+                response.status
+              }: ${truncateResponseText(responseText)}`,
+            )
+          }
+        }
+
+        const data: {
+          Items?: JellyfinItem[]
+          TotalRecordCount?: number
+        } = await response.json()
+
+        if (!Array.isArray(data.Items)) {
+          throw new Error(
+            `Unexpected response from ${response.url}: expected an "Items" array`,
           )
         }
-        break
+
+        // Mark that we hit an empty page
+        if (data.Items.length === 0) {
+          hitEmptyPage = true
+        } else {
+          pageResults.set(startIndex, data.Items)
+        }
+      })
+
+      await Promise.all(promises)
+    }
+
+    // Merge results in order of startIndex
+    for (const startIndex of remainingPages) {
+      const items = pageResults.get(startIndex)
+      if (items) {
+        allItems.push(...items)
       }
+    }
 
-      allItems.push(...data.Items)
-
-      // Validate TotalRecordCount before using it
-      const totalRecordCount =
-        typeof data.TotalRecordCount === 'number' ? data.TotalRecordCount : null
-      if (totalRecordCount === null) {
-        // Missing or invalid TotalRecordCount: stop after first page
-        break
-      }
-
-      if (allItems.length >= totalRecordCount) {
-        break
-      }
-
-      // Derive startIndex from actual items loaded to stay in sync
-      startIndex = allItems.length
+    // If we got fewer items than expected, log a warning
+    if (hitEmptyPage && allItems.length < totalRecordCount) {
+      log.warning(
+        `Jellyfin /Items stopped returning items early (viewId: ${viewId}). Loaded ${allItems.length} of ${totalRecordCount} expected items.`,
+      )
     }
 
     return allItems

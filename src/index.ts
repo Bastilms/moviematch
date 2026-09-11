@@ -9,8 +9,11 @@ import {
   RATE_LIMIT_HTTP_PER_MINUTE,
   RATE_LIMIT_WS_PER_MINUTE,
   RATE_LIMIT_MESSAGES_PER_MINUTE,
+  RATE_LIMIT_LOGIN_PER_MINUTE,
+  SESSION_TTL_HOURS,
   TRUST_PROXY,
   DATABASE_PATH,
+  BACKEND,
 } from './config.js'
 import { getLinkTypeForRequest } from './i18n.js'
 import { handleLogin } from './session.js'
@@ -26,6 +29,16 @@ import {
 import { toCSV } from './util/csv.js'
 import { createRateLimiter, getClientIp } from './util/rateLimit.js'
 import type { RateLimiter } from './util/rateLimit.js'
+import {
+  createSession,
+  getSession as getStoredSession,
+  destroySession,
+  stopSessionStore,
+} from './util/sessionStore.js'
+import {
+  authenticateJellyfinUser,
+  logoutJellyfinUser,
+} from './util/jellyfinUser.js'
 
 const backend = getBackend()
 
@@ -42,6 +55,34 @@ const messageRateLimiter: RateLimiter | null = RATE_LIMIT_ENABLED
   ? createRateLimiter(RATE_LIMIT_MESSAGES_PER_MINUTE)
   : null
 
+const loginRateLimiter: RateLimiter | null = RATE_LIMIT_ENABLED
+  ? createRateLimiter(RATE_LIMIT_LOGIN_PER_MINUTE)
+  : null
+
+// Hilfsfunktion zum Parsen des Cookie-Headers
+function parseCookies(
+  cookieHeader: string | undefined,
+): Record<string, string> {
+  const cookies: Record<string, string> = {}
+  if (!cookieHeader) {
+    return cookies
+  }
+
+  const parts = cookieHeader.split(';')
+  for (const part of parts) {
+    const trimmed = part.trim()
+    if (!trimmed) continue
+    const eqIndex = trimmed.indexOf('=')
+    if (eqIndex === -1) continue
+    const name = trimmed.slice(0, eqIndex).trim()
+    const value = trimmed.slice(eqIndex + 1).trim()
+    if (name) {
+      cookies[name] = value
+    }
+  }
+  return cookies
+}
+
 // Set up logging for rate limit transitions
 if (httpRateLimiter?.setLogger) {
   httpRateLimiter.setLogger((_, ip) => {
@@ -56,6 +97,11 @@ if (wsRateLimiter?.setLogger) {
 if (messageRateLimiter?.setLogger) {
   messageRateLimiter.setLogger((_, ip) => {
     log.warning(`Rate limit exceeded for WebSocket messages from ${ip}`)
+  })
+}
+if (loginRateLimiter?.setLogger) {
+  loginRateLimiter.setLogger((_, ip) => {
+    log.warning(`Rate limit exceeded for login attempts from ${ip}`)
   })
 }
 
@@ -166,6 +212,155 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(404, { 'content-type': 'text/plain' })
         res.end('Not Found')
       }
+    } else if (url === '/api/jellyfin-login') {
+      // POST /api/jellyfin-login endpoint
+      if (req.method !== 'POST') {
+        res.writeHead(405, { 'content-type': 'text/plain' })
+        res.end('Method Not Allowed')
+        return
+      }
+
+      // Nur wenn Jellyfin-Backend aktiviert ist
+      if (BACKEND !== 'jellyfin') {
+        res.writeHead(404, { 'content-type': 'text/plain' })
+        res.end('Not Found')
+        return
+      }
+
+      // Rate-Limit für Login-Versuche prüfen
+      const clientIp = getClientIp(req, TRUST_PROXY)
+      if (loginRateLimiter && !loginRateLimiter.check(clientIp)) {
+        res.writeHead(429, { 'content-type': 'application/json' })
+        res.end('')
+        return
+      }
+
+      // Rumpfgröße auf 8 KB begrenzen
+      let requestBody = ''
+      const maxBodySize = 8 * 1024 // 8 KB
+
+      req.on('data', chunk => {
+        requestBody += chunk.toString('utf-8')
+        if (requestBody.length > maxBodySize) {
+          res.writeHead(413, { 'content-type': 'text/plain' })
+          res.end('Payload Too Large')
+          req.socket.destroy()
+        }
+      })
+
+      req.on('end', async () => {
+        try {
+          // Rumpf parsen
+          let body: {
+            name?: unknown
+            password?: unknown
+            createPlaylist?: unknown
+          }
+          try {
+            body = JSON.parse(requestBody)
+          } catch {
+            res.writeHead(400, { 'content-type': 'application/json' })
+            res.end(JSON.stringify({ error: 'Invalid JSON.' }))
+            return
+          }
+
+          // Name und Passwort validieren
+          const name = body.name
+          const password = body.password
+          const createPlaylist =
+            typeof body.createPlaylist === 'boolean'
+              ? body.createPlaylist
+              : false
+
+          if (typeof name !== 'string' || typeof password !== 'string') {
+            res.writeHead(400, { 'content-type': 'application/json' })
+            res.end(JSON.stringify({ error: 'Missing name or password.' }))
+            return
+          }
+
+          // Jellyfin-Authentifizierung versuchen
+          let session
+          try {
+            session = await authenticateJellyfinUser(name, password)
+          } catch {
+            res.writeHead(401, { 'content-type': 'application/json' })
+            res.end(JSON.stringify({ error: 'Jellyfin login failed.' }))
+            return
+          }
+
+          // Wenn nicht createPlaylist: Token sofort beenden
+          let accessToken: string | null = session.accessToken
+          if (!createPlaylist) {
+            await logoutJellyfinUser(accessToken)
+            accessToken = null
+          }
+
+          // Sitzung erstellen
+          const storedSession = {
+            userId: session.userId,
+            userName: session.userName,
+            accessToken,
+            createdAt: Date.now(),
+          }
+          const sessionId = createSession(storedSession)
+
+          // Cookie setzen
+          const ttlSeconds = SESSION_TTL_HOURS * 3600
+          let setCookieValue = `mm_session=${sessionId}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${ttlSeconds}`
+
+          // Secure Flag nur wenn HTTPS erkannt wird (via x-forwarded-proto)
+          if (TRUST_PROXY && req.headers['x-forwarded-proto'] === 'https') {
+            setCookieValue += '; Secure'
+          }
+
+          res.setHeader('Set-Cookie', setCookieValue)
+          res.writeHead(200, { 'content-type': 'application/json' })
+          res.end(
+            JSON.stringify({
+              userName: session.userName,
+              playlistEnabled: createPlaylist,
+            }),
+          )
+        } catch (err) {
+          log.error(`Error in /api/jellyfin-login endpoint: ${err}`)
+          if (!res.headersSent) {
+            res.writeHead(500, { 'content-type': 'application/json' })
+            res.end(JSON.stringify({ error: 'Internal Server Error' }))
+          }
+        }
+      })
+      return
+    } else if (url === '/api/jellyfin-logout') {
+      // POST /api/jellyfin-logout endpoint
+      if (req.method !== 'POST') {
+        res.writeHead(405, { 'content-type': 'text/plain' })
+        res.end('Method Not Allowed')
+        return
+      }
+
+      // Nur wenn Jellyfin-Backend aktiviert ist
+      if (BACKEND !== 'jellyfin') {
+        res.writeHead(404, { 'content-type': 'text/plain' })
+        res.end('Not Found')
+        return
+      }
+
+      // Cookie auslesen
+      const cookies = parseCookies(req.headers.cookie)
+      const sessionId = cookies.mm_session
+
+      if (sessionId) {
+        destroySession(sessionId)
+      }
+
+      // Cookie löschen (Max-Age=0)
+      const deleteCookieValue =
+        'mm_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'
+      res.setHeader('Set-Cookie', deleteCookieValue)
+
+      res.writeHead(204)
+      res.end()
+      return
     } else if (url.match(/^\/api\/rooms\/([0-9A-Za-z]+)\/likes\.csv/)) {
       // User likes export endpoint
       const match = url.match(/^\/api\/rooms\/([0-9A-Za-z]+)\/likes\.csv/)
@@ -387,6 +582,15 @@ server.on('upgrade', (request, socket, head) => {
       }
     }
 
+    // Versuche, die Sitzung aus dem Cookie zu laden
+    const cookies = parseCookies(request.headers.cookie)
+    const sessionId = cookies.mm_session
+    const storedSession =
+      sessionId && BACKEND === 'jellyfin' ? getStoredSession(sessionId) : null
+
+    // Hänge die Sitzung an den Request an, damit sie später verfügbar ist
+    ;(request as any)._jellyfinSession = storedSession
+
     wss.handleUpgrade(request, socket, head)
   } else {
     socket.destroy()
@@ -397,6 +601,9 @@ server.on('upgrade', (request, socket, head) => {
 const gracefulShutdown = () => {
   log.info('Shutting down')
 
+  // Stop session store cleanup timer
+  stopSessionStore()
+
   // Stop rate limiters
   if (httpRateLimiter) {
     httpRateLimiter.stop()
@@ -406,6 +613,9 @@ const gracefulShutdown = () => {
   }
   if (messageRateLimiter) {
     messageRateLimiter.stop()
+  }
+  if (loginRateLimiter) {
+    loginRateLimiter.stop()
   }
 
   // Clean up held sockets
@@ -447,4 +657,20 @@ try {
 
 server.listen(Number(PORT), () => {
   log.info(`Listening on port ${PORT}`)
+
+  // Preload media items in the background
+  const startTime = Date.now()
+  backend
+    .getMediaItems()
+    .then(items => {
+      const duration = (Date.now() - startTime) / 1000
+      log.info(
+        `Preloaded ${items.length} titles from the media library in ${duration.toFixed(1)}s`,
+      )
+    })
+    .catch(err => {
+      log.warning(
+        `Preloading the media library failed, it will be loaded on demand: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    })
 })

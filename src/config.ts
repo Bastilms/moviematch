@@ -73,6 +73,13 @@ export const RATE_LIMIT_MESSAGES_PER_MINUTE = parseRateLimitConfig(
   300,
 )
 
+export const RATE_LIMIT_LOGIN_PER_MINUTE = parseRateLimitConfig(
+  'RATE_LIMIT_LOGIN_PER_MINUTE',
+  10,
+)
+
+export const SESSION_TTL_HOURS = parseRateLimitConfig('SESSION_TTL_HOURS', 12)
+
 export const TRUST_PROXY =
   getEnvTrimmed('TRUST_PROXY')?.toLowerCase() === 'true'
 

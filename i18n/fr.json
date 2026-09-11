@@ -16,5 +16,7 @@
   "MATCHES_SECTION_EXPORT_CSV": "Exporter en CSV",
   "MATCHES_SECTION_EXPORT_LIKES": "Exporter mes favoris",
   "LIST_CONJUNCTION": "et",
-  "CARD_NO_SUMMARY": "Aucune description disponible."
+  "CARD_NO_SUMMARY": "Aucune description disponible.",
+  "STATUS_OFFLINE": "Connexion perdue — reconnexion…",
+  "STATUS_RECONNECTED": "De nouveau en ligne"
 }

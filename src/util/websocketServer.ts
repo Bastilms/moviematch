@@ -48,6 +48,10 @@ export class WebSocketServer {
         )
         // Attach the message rate limiter function
         webSocket._messageRateLimiter = this.messageRateLimiterFn
+        // Attach the Jellyfin session from the request, if available
+        if ((request as any)._jellyfinSession) {
+          webSocket.jellyfin = (request as any)._jellyfinSession
+        }
         this.connections.add(webSocket)
         webSocket.once('close', () => {
           this.connections.delete(webSocket)
@@ -66,6 +70,12 @@ export class WebSocketServer {
   }
 }
 
+export interface StoredJellyfinSession {
+  userId: string
+  userName: string
+  accessToken: string | null
+}
+
 export class WebSocket extends EventEmitter {
   private ws: WSWebSocket
   private _isClosed = false
@@ -73,7 +83,7 @@ export class WebSocket extends EventEmitter {
   public _request?: IncomingMessage
   public remoteAddress?: string
   public _messageRateLimiter?: (ip: string) => boolean
-  public jellyfin: JellyfinSession | null = null
+  public jellyfin: StoredJellyfinSession | null = null
   public playlistEnabled: boolean = false
   public playlistId: string | null = null
 

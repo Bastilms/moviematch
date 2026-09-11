@@ -102,9 +102,12 @@
     data-i18n-match-likers-template="${MATCHES_SECTION_CARD_LIKERS}"
     data-i18n-share-copied="${MATCHES_SECTION_SHARE_COPIED}"
     data-i18n-no-summary="${CARD_NO_SUMMARY}"
+    data-i18n-status-offline="${STATUS_OFFLINE}"
+    data-i18n-status-reconnected="${STATUS_RECONNECTED}"
     data-base-path="${ROOT_PATH}"
     data-backend="${BACKEND}"
   >
+    <div class="connection-banner js-connection-banner" role="status" aria-live="polite" hidden></div>
     <main class="app">
       <section class="login-section">
         <img

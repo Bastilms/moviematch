@@ -69,6 +69,44 @@ body {
   color: var(--bone);
 }
 
+.connection-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  padding: calc(env(safe-area-inset-top, 0) + 0.75rem)
+    env(safe-area-inset-right, 0) 0.75rem env(safe-area-inset-left, 0);
+  text-align: center;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background-color: var(--indigo);
+  color: var(--bone);
+  animation: slide-down 300ms ease-in-out;
+}
+
+.connection-banner[hidden] {
+  display: none;
+}
+
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connection-banner {
+    animation: none;
+  }
+}
+
 .app:not([hidden]) {
   display: flex;
   flex-direction: column;

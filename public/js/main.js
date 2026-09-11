@@ -15,6 +15,30 @@ const main = async () => {
   // Undo history stack (stores movie objects that have been rated)
   const swipeHistory = []
 
+  // Handle connection state changes
+  api.addEventListener('connectionState', e => {
+    const banner = document.querySelector('.js-connection-banner')
+    if (!banner) return
+
+    if (e.data === 'offline' || e.data === 'reconnecting') {
+      banner.textContent = document.body.dataset['i18nStatusOffline']
+      banner.removeAttribute('hidden')
+    } else if (e.data === 'online') {
+      banner.textContent = document.body.dataset['i18nStatusReconnected']
+      banner.removeAttribute('hidden')
+      // Hide banner after 2 seconds
+      setTimeout(() => {
+        banner.setAttribute('hidden', '')
+      }, 2000)
+    }
+  })
+
+  // Handle reconnection
+  api.addEventListener('reconnected', e => {
+    // Replace matches list with server's version
+    matchesView.replaceMatches(e.data.matches || [])
+  })
+
   api.addEventListener('match', e => matchesView.add(e.data))
   api.addEventListener('undoResponse', e => {
     if (e.data.success && swipeHistory.length > 0) {

@@ -39,6 +39,11 @@ export class MatchesView {
     }
   }
 
+  replaceMatches(newMatches) {
+    this.matches = newMatches || []
+    this.render()
+  }
+
   formatList = users => {
     if (users.length < 3) return users.join(' and ')
 
