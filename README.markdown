@@ -14,6 +14,46 @@ A title is a match when every participant in the room has rated it and all ratin
 
 **Rooms and ratings persist across server restarts** — thanks to SQLite, your matches and ratings are saved to disk and will be available when MovieMatch starts again.
 
+## Screenshots
+
+The screens below were captured against a mock media server, so every title, name and picture in them is made up.
+
+### Joining a room
+
+The password field and the playlist checkbox only appear when the server runs with `BACKEND=jellyfin`. Leave the password empty to join without signing in.
+
+![Login form with name, room code, optional Jellyfin password and playlist checkbox](docs/screenshots/01-anmeldung.jpg)
+
+### Swiping
+
+Swipe right to 👍, left to 👎, or use the buttons below the deck.
+
+![Card deck showing a film poster with the title and year](docs/screenshots/02-swipen.jpg)
+
+### The back of a card
+
+Tap a card to turn it over: title linked to the media server, year and director, the summary, and the rating from your own library.
+
+![Back of a card showing summary, year, director and rating](docs/screenshots/03-kartenrueckseite.jpg)
+
+### Matches
+
+The room code, the share and export buttons, and every title everyone agreed on.
+
+![Match list with room code, action buttons and match count](docs/screenshots/04-treffer.jpg)
+
+### The user menu
+
+After signing in with Jellyfin your profile picture appears in the top right corner. Without a picture in Jellyfin, the first letter of your name is shown instead.
+
+![Open user menu with a log out entry](docs/screenshots/05-benutzermenue.jpg)
+
+### Losing the connection
+
+A small banner counts down to the next attempt. Ratings made while offline are kept and sent once the connection is back.
+
+![Floating banner reading "Offline — neuer Versuch in 3 s" above the card deck](docs/screenshots/06-offline-banner.jpg)
+
 ## Getting started
 
 ### With Node.js (local)
